@@ -28,6 +28,10 @@ cdef void* _init_state(Pool mem, int length, void* tokens) except NULL:
     return <void*>st
 
 
+cdef bint action_is_valid(const StateC* st, attr_t label) nogil:
+    return False
+
+
 cdef class TransitionSystem:
     def __init__(self, StringStore string_table, labels_by_action):
         self.mem = Pool()
@@ -113,6 +117,25 @@ cdef class TransitionSystem:
         if action.move == 0:
             return False
         return action.is_valid(stcls.c, action.label)
+
+    def prohibit_action(self, action):
+        '''Prevent an action from being applied, by replacing its is_valid
+        method. The pointer to the previous is_valid method is not stored,
+        so this effect may be difficult to reverse.
+
+        action may be a class ID, or the name of a move. Example:
+
+        nlp.entity.moves.prohibit_action('B-DATE')
+        nlp.entity.moves.prohibit_action('I-DATE')
+        nlp.entity.moves.prohibit_action('L-DATE')
+        nlp.entity.moves.prohibit_action('U-DATE')
+        '''
+
+        move_names = [self.get_class_name(i) for i in range(self.n_moves)]
+        if action in move_names:
+            action = move_names.index(action)
+        if action < self.n_moves:
+            self.c[action].is_valid = action_is_valid
 
     cdef int set_valid(self, int* is_valid, const StateC* st) nogil:
         cdef int i
