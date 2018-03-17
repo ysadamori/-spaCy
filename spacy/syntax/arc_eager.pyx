@@ -372,10 +372,7 @@ cdef class ArcEager(TransitionSystem):
     def preprocess_gold(self, GoldParse gold):
         if not self.has_gold(gold):
             return None
-        heads = [(head+i) if head is not None else head
-                 for i, head in enumerate(gold.heads)]
-        heads, deps = projectivize(gold.heads, gold.labels)
-        for i, (head, dep) in enumerate(zip(heads, deps)):
+        for i, (head, dep) in enumerate(zip(gold.heads, gold.labels)):
             # Missing values
             if head is None or dep is None:
                 gold.c.heads[i] = i
@@ -386,8 +383,6 @@ cdef class ArcEager(TransitionSystem):
                     dep = 'ROOT'
                 gold.c.heads[i] = head
                 gold.c.labels[i] = self.strings.add(dep)
-        gold.heads = heads
-        gold.labels = deps
         return gold
 
     def get_beam_parses(self, Beam beam):

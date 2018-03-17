@@ -179,12 +179,12 @@ class GoldCorpus(object):
         return n
 
     def train_docs(self, nlp, gold_preproc=False, max_length=None,
-                    noise_level=0.0):
+                    noise_level=0.0, projectivize=True):
         locs = list((self.tmp_dir / 'train').iterdir())
         random.shuffle(locs)
         train_tuples = self.read_tuples(locs, limit=self.limit)
         gold_docs = self.iter_gold_docs(nlp, train_tuples, gold_preproc,
-                                        max_length=max_length,
+                                        max_length=max_length, projectivize=projectivize,
                                         noise_level=noise_level)
         yield from gold_docs
 
@@ -194,7 +194,7 @@ class GoldCorpus(object):
 
     @classmethod
     def iter_gold_docs(cls, nlp, tuples, gold_preproc, max_length=None,
-                       noise_level=0.0):
+                       noise_level=0.0, projectivize=False):
         for raw_text, paragraph_tuples in tuples:
             if gold_preproc:
                 raw_text = None
@@ -202,7 +202,8 @@ class GoldCorpus(object):
                 paragraph_tuples = merge_sents(paragraph_tuples)
             docs = cls._make_docs(nlp, raw_text, paragraph_tuples,
                                   gold_preproc, noise_level=noise_level)
-            golds = cls._make_golds(docs, paragraph_tuples)
+            golds = cls._make_golds(docs, paragraph_tuples,
+                                    projectivize=projectivize)
             for doc, gold in zip(docs, golds):
                 if (not max_length) or len(doc) < max_length:
                     yield doc, gold
@@ -219,15 +220,15 @@ class GoldCorpus(object):
                     for (sent_tuples, brackets) in paragraph_tuples]
 
     @classmethod
-    def _make_golds(cls, docs, paragraph_tuples):
+    def _make_golds(cls, docs, paragraph_tuples, projectivize=False):
         assert len(docs) == len(paragraph_tuples)
         if len(docs) == 1:
-            return [GoldParse.from_annot_tuples(docs[0],
-                                                paragraph_tuples[0][0])]
+            return [GoldParse.from_annot_tuples(docs[0], paragraph_tuples[0][0],
+                                                make_projective=projectivize)]
         else:
-            return [GoldParse.from_annot_tuples(doc, sent_tuples)
-                    for doc, (sent_tuples, brackets)
-                    in zip(docs, paragraph_tuples)]
+            return [GoldParse.from_annot_tuples(doc, sent_tuples,
+                                                make_projective=projectivize)
+                    for doc, (sent_tuples, brackets) in zip(docs, paragraph_tuples)]
 
 
 def add_noise(orig, noise_level):
@@ -378,6 +379,9 @@ cdef class GoldParse:
         elif not isinstance(entities[0], basestring):
             # Assume we have entities specified by character offset.
             entities = biluo_tags_from_offsets(doc, entities)
+
+        if make_projective:
+            heads, deps = nonproj.projectivize(heads, deps)
 
         self.mem = Pool()
         self.loss = 0
