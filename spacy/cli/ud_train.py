@@ -16,6 +16,7 @@ from ..gold import GoldParse
 from ..util import compounding, minibatch_by_words
 from ..syntax.nonproj import projectivize
 from ..matcher import Matcher
+from .. import displacy
 from collections import defaultdict, Counter
 from timeit import default_timer as timer
 
@@ -175,7 +176,7 @@ def evaluate(nlp, text_loc, gold_loc, sys_loc, limit=None):
         with sys_loc.open('r', encoding='utf8') as sys_file:
             sys_ud = conll17_ud_eval.load_conllu(sys_file)
         scores = conll17_ud_eval.evaluate(gold_ud, sys_ud)
-    return scores
+    return docs, scores
 
 
 def write_conllu(docs, file_):
@@ -264,19 +265,11 @@ def initialize_pipeline(nlp, docs, golds, config):
         nlp.parser.add_multitask_objective('tag')
     if config.multitask_sent:
         nlp.parser.add_multitask_objective('sent_start')
-    nlp.parser.moves.add_action(2, 'subtok')
     nlp.add_pipe(nlp.create_pipe('tagger'))
     for gold in golds:
         for tag in gold.tags:
             if tag is not None:
                 nlp.tagger.add_label(tag)
-    # Replace labels that didn't make the frequency cutoff
-    actions = set(nlp.parser.labels)
-    label_set = set([act.split('-')[1] for act in actions if '-' in act])
-    for gold in golds:
-        for i, label in enumerate(gold.labels):
-            if label is not None and label not in label_set:
-                gold.labels[i] = label.split('||')[0]
     return nlp.begin_training(lambda: golds_to_gold_tuples(docs, golds))
 
 
@@ -362,8 +355,16 @@ def main(ud_dir, parses_dir, config, corpus, limit=0):
         
         out_path = parses_dir / corpus / 'epoch-{i}.conllu'.format(i=i)
         with nlp.use_params(optimizer.averages):
-            scores = evaluate(nlp, paths.dev.text, paths.dev.conllu, out_path)
+            parsed_docs, scores = evaluate(nlp, paths.dev.text, paths.dev.conllu, out_path)
             print_progress(i, losses, scores)
+            _render_parses(i, parsed_docs[:50]) 
+
+
+def _render_parses(i, to_render):
+    to_render[0].user_data['title'] = "Batch %d" % i
+    with Path('/tmp/parses.html').open('w') as file_:
+        html = displacy.render(to_render[:5], style='dep', page=True)
+        file_.write(html)
 
 
 if __name__ == '__main__':

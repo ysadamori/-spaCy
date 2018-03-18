@@ -17,6 +17,8 @@ from .transition_system cimport move_cost_func_t, label_cost_func_t
 from ..gold cimport GoldParse, GoldParseC
 from ..structs cimport TokenC
 
+# Calculate cost as gold/not gold. We don't use scalar value anyway.
+cdef int BINARY_COSTS = 1
 
 DEF NON_MONOTONIC = True
 DEF USE_BREAK = True
@@ -55,6 +57,8 @@ cdef weight_t push_cost(StateClass stcls, const GoldParseC* gold, int target) no
             cost += 1
         if gold.heads[S_i] == target and (NON_MONOTONIC or not stcls.has_head(S_i)):
             cost += 1
+        if BINARY_COSTS and cost >= 1:
+            return cost
     cost += Break.is_valid(stcls.c, 0) and Break.move_cost(stcls, gold) == 0
     return cost
 
@@ -68,6 +72,8 @@ cdef weight_t pop_cost(StateClass stcls, const GoldParseC* gold, int target) nog
         cost += gold.heads[target] == B_i
         if gold.heads[B_i] == B_i or gold.heads[B_i] < target:
             break
+        if BINARY_COSTS and cost >= 1:
+            return cost
     if Break.is_valid(stcls.c, 0) and Break.move_cost(stcls, gold) == 0:
         cost += 1
     return cost
@@ -349,9 +355,9 @@ cdef class ArcEager(TransitionSystem):
         actions[BREAK].setdefault('ROOT', 0)
         actions[RIGHT].setdefault('subtok', 0)
         actions[LEFT].setdefault('subtok', 0)
-
-        print("Got actions")
-        print(json.dumps(actions, indent=2))
+        # Used for backoff
+        actions[RIGHT].setdefault('dep', 0)
+        actions[LEFT].setdefault('dep', 0)
         return actions
 
     property action_types:
@@ -396,9 +402,16 @@ cdef class ArcEager(TransitionSystem):
                 else:
                     action = BREAK
                 if dep not in self.labels[action]:
-                    gold.c.heads[i] = i
-                    gold.c.has_dep[i] = False
-                    continue
+                    if action == BREAK:
+                        dep = 'ROOT'
+                    elif nonproj.is_decorated(dep):
+                        backoff = nonproj.decompose(dep)[0]
+                        if backoff in self.labels[action]:
+                            dep = backoff
+                        else:
+                            dep = 'dep'
+                    else:
+                        dep = 'dep'
                 gold.c.has_dep[i] = True
                 if dep.upper() == 'ROOT':
                     dep = 'ROOT'

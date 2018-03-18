@@ -19,6 +19,7 @@ from .syntax import nonproj
 from .tokens import Doc
 from . import util
 from .util import minibatch, itershuffle
+from .compat import json_dumps
 
 from libc.stdio cimport FILE, fopen, fclose, fread, fwrite, feof, fseek
 
@@ -91,7 +92,7 @@ def align(cand_words, gold_words):
 class GoldCorpus(object):
     """An annotated corpus, using the JSON file format. Manages
     annotations for tagging, dependency parsing and NER."""
-    def __init__(self, train, dev, gold_preproc=True, limit=None):
+    def __init__(self, train, dev, gold_preproc=False, limit=None):
         """Create a GoldCorpus.
 
         train_path (unicode or Path): File or directory of training data.
@@ -119,8 +120,8 @@ class GoldCorpus(object):
             directory.mkdir()
         for i, doc_tuple in enumerate(doc_tuples):
             with open(directory / '{}.msg'.format(i), 'wb') as file_:
-                msgpack.dump(doc_tuple, file_, use_bin_type=True, encoding='utf8')
-
+                msgpack.dump([doc_tuple], file_, use_bin_type=True, encoding='utf8')
+    
     @staticmethod
     def walk_corpus(path):
         path = util.ensure_path(path)
@@ -150,7 +151,7 @@ class GoldCorpus(object):
                 gold_tuples = read_json_file(loc)
             elif loc.parts[-1].endswith('msg'):
                 with loc.open('rb') as file_:
-                    gold_tuples = [msgpack.load(file_, encoding='utf8')]
+                    gold_tuples = msgpack.load(file_, encoding='utf8')
             else:
                 msg = "Cannot read from file: %s. Supported formats: .json, .msg"
                 raise ValueError(msg % loc)
@@ -193,7 +194,8 @@ class GoldCorpus(object):
         yield from gold_docs
 
     def dev_docs(self, nlp, gold_preproc=False):
-        gold_docs = self.iter_gold_docs(nlp, self.dev_tuples, gold_preproc)
+        gold_docs = self.iter_gold_docs(nlp, self.dev_tuples,
+                                        gold_preproc=gold_preproc)
         yield from gold_docs
 
     @classmethod
@@ -306,14 +308,29 @@ def _json_iterate(loc):
     raw = <char*>py_raw
     cdef int square_depth = 0
     cdef int curly_depth = 0
+    cdef int inside_string = 0
+    cdef int escape = 0
     cdef int start = -1
     cdef char c
+    cdef char quote = ord('"')
+    cdef char backslash = ord('\\')
     cdef char open_square = ord('[')
     cdef char close_square = ord(']')
     cdef char open_curly = ord('{')
     cdef char close_curly = ord('}')
     for i in range(len(py_raw)):
         c = raw[i]
+        if c == backslash:
+            escape = True
+            continue
+        if escape:
+            escape = False
+            continue
+        if c == quote:
+            inside_string = not inside_string
+            continue
+        if inside_string:
+            continue
         if c == open_square:
             square_depth += 1
         elif c == close_square:
@@ -466,14 +483,39 @@ cdef class GoldParse:
                 if i in i2j_multi:
                     self.words[i] = words[i2j_multi[i]]
                     self.tags[i] = tags[i2j_multi[i]]
+                    is_last = i2j_multi[i] != i2j_multi.get(i+1)
+                    is_first = i2j_multi[i] != i2j_multi.get(i-1)
                     # Set next word in multi-token span as head, until last
-                    if i2j_multi[i] == i2j_multi.get(i+1):
+                    if not is_last:
                         self.heads[i] = i+1
                         self.labels[i] = 'subtok'
                     else:
                         self.heads[i] = self.gold_to_cand[heads[i2j_multi[i]]]
                         self.labels[i] = deps[i2j_multi[i]]
-                    # TODO: Set NER!
+                    # Now set NER...This is annoying because if we've split
+                    # got an entity word split into two, we need to adjust the
+                    # BILOU tags. We can't have BB or LL etc.
+                    # Case 1: O -- easy.
+                    ner_tag = entities[i2j_multi[i]]
+                    if ner_tag == 'O':
+                        self.ner[i] = 'O'
+                    # Case 2: U. This has to become a B I* L sequence.
+                    elif ner_tag.startswith('U-'):
+                        if is_first:
+                            self.ner[i] = ner_tag.replace('U-', 'B-', 1)
+                        elif is_last:
+                            self.ner[i] = ner_tag.replace('U-', 'L-', 1)
+                        else:
+                            self.ner[i] = ner_tag.replace('U-', 'I-', 1)
+                    # Case 3: L. If not last, change to I.
+                    elif ner_tag.startswith('L-'):
+                        if is_last:
+                            self.ner[i] = ner_tag
+                        else:
+                            self.ner[i] = ner_tag.replace('L-', 'I-', 1)
+                    # Case 4: I. Stays correct
+                    elif ner_tag.startswith('I-'):
+                        self.ner[i] = ner_tag
             else:
                 self.words[i] = words[gold_i]
                 self.tags[i] = tags[gold_i]
