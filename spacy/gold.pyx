@@ -12,7 +12,7 @@ import shutil
 from pathlib import Path
 import msgpack
 
-import rapidjson as json
+import ujson
 
 from . import _align 
 from .syntax import nonproj
@@ -20,6 +20,7 @@ from .tokens import Doc
 from . import util
 from .util import minibatch, itershuffle
 
+from libc.stdio cimport FILE, fopen, fclose, fread, fwrite, feof, fseek
 
 def tags_to_entities(tags):
     entities = []
@@ -105,6 +106,7 @@ class GoldCorpus(object):
         # Write temp directory with one doc per file, so we can shuffle
         # and stream
         self.tmp_dir = Path(tempfile.mkdtemp())
+        print("Writing data to", self.tmp_dir)
         self.write_msgpack(self.tmp_dir / 'train', train)
         self.write_msgpack(self.tmp_dir / 'dev', dev)
 
@@ -117,7 +119,7 @@ class GoldCorpus(object):
             directory.mkdir()
         for i, doc_tuple in enumerate(doc_tuples):
             with open(directory / '{}.msg'.format(i), 'wb') as file_:
-                msgpack.dump(doc_tuple, file_)
+                msgpack.dump(doc_tuple, file_, use_bin_type=True, encoding='utf8')
 
     @staticmethod
     def walk_corpus(path):
@@ -148,7 +150,7 @@ class GoldCorpus(object):
                 gold_tuples = read_json_file(loc)
             elif loc.parts[-1].endswith('msg'):
                 with loc.open('rb') as file_:
-                    gold_tuples = [msgpack.load(file_)]
+                    gold_tuples = [msgpack.load(file_, encoding='utf8')]
             else:
                 msg = "Cannot read from file: %s. Supported formats: .json, .msg"
                 raise ValueError(msg % loc)
@@ -172,7 +174,8 @@ class GoldCorpus(object):
         n = 0
         i = 0
         for raw_text, paragraph_tuples in self.train_tuples:
-            n += sum(len(s[0][1]) for s in paragraph_tuples)
+            for sent_tuples, brackets in paragraph_tuples:
+                n += len(sent_tuples[1])
             if self.limit and i >= self.limit:
                 break
             i += len(paragraph_tuples)
@@ -184,8 +187,9 @@ class GoldCorpus(object):
         random.shuffle(locs)
         train_tuples = self.read_tuples(locs, limit=self.limit)
         gold_docs = self.iter_gold_docs(nlp, train_tuples, gold_preproc,
-                                        max_length=max_length, projectivize=projectivize,
-                                        noise_level=noise_level)
+                                        max_length=max_length,
+                                        noise_level=noise_level,
+                                        make_projective=True)
         yield from gold_docs
 
     def dev_docs(self, nlp, gold_preproc=False):
@@ -194,7 +198,7 @@ class GoldCorpus(object):
 
     @classmethod
     def iter_gold_docs(cls, nlp, tuples, gold_preproc, max_length=None,
-                       noise_level=0.0, projectivize=False):
+                       noise_level=0.0, make_projective=False):
         for raw_text, paragraph_tuples in tuples:
             if gold_preproc:
                 raw_text = None
@@ -202,8 +206,7 @@ class GoldCorpus(object):
                 paragraph_tuples = merge_sents(paragraph_tuples)
             docs = cls._make_docs(nlp, raw_text, paragraph_tuples,
                                   gold_preproc, noise_level=noise_level)
-            golds = cls._make_golds(docs, paragraph_tuples,
-                                    projectivize=projectivize)
+            golds = cls._make_golds(docs, paragraph_tuples, make_projective)
             for doc, gold in zip(docs, golds):
                 if (not max_length) or len(doc) < max_length:
                     yield doc, gold
@@ -262,11 +265,7 @@ def read_json_file(loc, docs_filter=None, limit=None):
             yield from read_json_file(loc / filename, limit=limit)
     else:
         print(loc)
-        with loc.open('r', encoding='utf8') as file_:
-            docs = json.load(file_)
-        if limit is not None:
-            docs = docs[:limit]
-        for doc in docs:
+        for doc in _json_iterate(loc):
             if docs_filter is not None and not docs_filter(doc):
                 continue
             paragraphs = []
@@ -294,6 +293,41 @@ def read_json_file(loc, docs_filter=None, limit=None):
                         sent.get('brackets', [])])
                 if sents:
                     yield [paragraph.get('raw', None), sents]
+
+
+def _json_iterate(loc):
+    # We should've made these files jsonl...But since we didn't, parse out
+    # the docs one-by-one to reduce memory usage.
+    # It's okay to read in the whole file -- just don't parse it into JSON.
+    cdef bytes py_raw
+    loc = util.ensure_path(loc)
+    with loc.open('rb') as file_:
+        py_raw = file_.read()
+    raw = <char*>py_raw
+    cdef int square_depth = 0
+    cdef int curly_depth = 0
+    cdef int start = -1
+    cdef char c
+    cdef char open_square = ord('[')
+    cdef char close_square = ord(']')
+    cdef char open_curly = ord('{')
+    cdef char close_curly = ord('}')
+    for i in range(len(py_raw)):
+        c = raw[i]
+        if c == open_square:
+            square_depth += 1
+        elif c == close_square:
+            square_depth -= 1
+        elif c == open_curly:
+            if square_depth == 1 and curly_depth == 0:
+                start = i
+            curly_depth += 1
+        elif c == close_curly:
+            curly_depth -= 1
+            if square_depth == 1 and curly_depth == 0:
+                py_str = py_raw[start : i+1].decode('utf8')
+                yield ujson.loads(py_str)
+                start = -1
 
 
 def iob_to_biluo(tags):
@@ -402,6 +436,10 @@ cdef class GoldParse:
         self.labels = [None] * len(doc)
         self.ner = [None] * len(doc)
 
+        # This needs to be done before we align the words
+        if make_projective and heads is not None and deps is not None:
+            heads, deps = nonproj.projectivize(heads, deps)
+
         # Do many-to-one alignment for misaligned tokens.
         # If we over-segment, we'll have one gold word that covers a sequence
         # of predicted words
@@ -449,10 +487,6 @@ cdef class GoldParse:
         cycle = nonproj.contains_cycle(self.heads)
         if cycle is not None:
             raise Exception("Cycle found: %s" % cycle)
-
-        if make_projective:
-            proj_heads, _ = nonproj.projectivize(self.heads, self.labels)
-            self.heads = proj_heads
 
     def __len__(self):
         """Get the number of gold-standard tokens.

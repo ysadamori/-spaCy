@@ -8,8 +8,8 @@ from thinc.neural._classes.model import Model
 from timeit import default_timer as timer
 
 from ..attrs import PROB, IS_OOV, CLUSTER, LANG
-from ..gold import GoldCorpus, minibatch
-from ..util import prints
+from ..gold import GoldCorpus
+from ..util import prints, minibatch_by_words
 from .. import util
 from .. import about
 from .. import displacy
@@ -51,8 +51,6 @@ def train(lang, output_dir, train_data, dev_data, n_iter=30, n_sents=0,
     train_path = util.ensure_path(train_data)
     dev_path = util.ensure_path(dev_data)
     meta_path = util.ensure_path(meta_path)
-    if not output_path.exists():
-        output_path.mkdir()
     if not train_path.exists():
         prints(train_path, title="Training data not found", exits=1)
     if dev_path and not dev_path.exists():
@@ -65,7 +63,14 @@ def train(lang, output_dir, train_data, dev_data, n_iter=30, n_sents=0,
                title="Not a valid meta.json format", exits=1)
     meta.setdefault('lang', lang)
     meta.setdefault('name', 'unnamed')
+    
+    if not output_path.exists():
+        output_path.mkdir()
 
+    print("Counting training words (limit=%s" % n_sents)
+    corpus = GoldCorpus(train_path, dev_path, limit=n_sents)
+    n_train_words = corpus.count_train()
+    print(n_train_words)
     pipeline = ['tagger', 'parser', 'ner']
     if no_tagger and 'tagger' in pipeline:
         pipeline.remove('tagger')
@@ -81,9 +86,9 @@ def train(lang, output_dir, train_data, dev_data, n_iter=30, n_sents=0,
     dropout_rates = util.decaying(util.env_opt('dropout_from', 0.2),
                                   util.env_opt('dropout_to', 0.2),
                                   util.env_opt('dropout_decay', 0.0))
-    batch_sizes = util.compounding(util.env_opt('batch_from', 1),
-                                   util.env_opt('batch_to', 16),
-                                   util.env_opt('batch_compound', 1.001))
+    batch_sizes = util.compounding(util.env_opt('batch_from', 100),
+                                   util.env_opt('batch_to', 3000),
+                                   util.env_opt('batch_compound', 1.01))
     max_doc_len = util.env_opt('max_doc_len', 5000)
     lang_class = util.get_lang_class(lang)
     nlp = lang_class()
@@ -108,8 +113,6 @@ def train(lang, output_dir, train_data, dev_data, n_iter=30, n_sents=0,
     if entity_multitasks:
         for objective in entity_multitasks.split(','):
             nlp.entity.add_multitask_objective(objective)
-    corpus = GoldCorpus(train_path, dev_path, limit=n_sents)
-    n_train_words = corpus.count_train()
     optimizer = nlp.begin_training(lambda: corpus.train_tuples, device=use_gpu)
     nlp._optimizer = None
 
@@ -120,7 +123,7 @@ def train(lang, output_dir, train_data, dev_data, n_iter=30, n_sents=0,
                                            gold_preproc=gold_preproc, max_length=0)
             with tqdm.tqdm(total=n_train_words, leave=False) as pbar:
                 losses = {}
-                for batch in minibatch(train_docs, size=batch_sizes):
+                for batch in minibatch_by_words(train_docs, size=batch_sizes):
                     batch = [(d, g) for (d, g) in batch if len(d) < max_doc_len]
                     if not batch:
                         continue
