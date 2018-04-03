@@ -110,7 +110,16 @@ def test_alignment_class_undersegment():
     assert A._y2t == [0, [1, 2], 3]
     assert A._t2y == [0, (1, 0), (1, 1), 2]
  
+ 
+def test_alignment_oversegment_undersegment():
+    words1 = ['a', 'b', 'cd', 'e'] 
+    words2 = ['ab', 'c', 'd', 'e']
+    print('i', words1)
+    print('j', words2)
+    A = Alignment(words1, words2)
+    assert A._y2t == [(0, 0), (0, 1), [1, 2], 3]
 
+ 
 @pytest.mark.parametrize('fused,flat', [
     ([ [(0, 1), 1], 1], [1, 2, 2]),
     ([1, 1, [1, 3], 1], [1, 1, 1, 4, 1])
