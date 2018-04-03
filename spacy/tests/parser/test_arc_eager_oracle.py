@@ -202,6 +202,34 @@ def test_split_oracle(arc_eager, vocab):
                 assert cost >= 1, (i, other_action, actions[i])
 
 
+def test_oracle_overlong_split(arc_eager, vocab):
+    if arc_eager.max_split < 2:
+        return
+    gold_words = ['a', 'b', 'c', 'd', 'e', 'f']
+    words = ['a', 'bcd', 'e', 'f']
+    doc = Doc(vocab, words=words)
+    heads = [5, 0, 5, 4, 5, 5]
+    deps = ['dep', 'dep', 'dep', 'dep', 'dep', 'ROOT']
+    gold = GoldParse(doc, words=gold_words, heads=heads, deps=deps)
+    assert gold.heads == [3, [0, 3, 2], 3, 3]
+    assert gold.labels == ['dep', ['dep', 'dep', 'dep'], 'dep', 'ROOT']
+    state = StateClass(doc)
+    M = arc_eager
+    M.preprocess_gold(gold)
+    assert gold.fused[0] == 0
+    assert M.get_cost(state, gold, 0) == 0 
+    M.transition(state, 0)
+    assert M.get_cost(state, gold, 0) == 0 
+    #state, cost_history = get_sequence_costs(arc_eager, words, gold_words, heads, deps, actions)
+    #assert state.is_final()
+    #for i, state_costs in enumerate(cost_history):
+    #    # Check gold moves is 0 cost
+    #    assert state_costs[actions[i]] == 0.0, actions[i]
+    #    for other_action, cost in state_costs.items():
+    #        if other_action != actions[i]:
+    #            assert cost >= 1, (i, other_action, actions[i])
+
+
 annot_tuples = [
     (0, 'When', 'WRB', 11, 'advmod', 'O'),
     (1, 'Walter', 'NNP', 2, 'compound', 'B-PERSON'),
