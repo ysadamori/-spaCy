@@ -67,8 +67,8 @@ def test_get_many_to_one_undersegment():
     i_lengths = [len(w) for w in words1] 
     j_lengths = [len(w) for w in words2] 
     cost, i2j, j2i, matrix = levenshtein_align(words1, words2)
-    i2j_miss = _get_regions(i2j, i_lengths)
-    j2i_miss = _get_regions(j2i, j_lengths)
+    i2j_miss = _get_regions(i2j, i_lengths, words1, words2)
+    j2i_miss = _get_regions(j2i, j_lengths, words2, words1)
     i2j_many2one = _get_many2one(i2j_miss, j2i_miss, i_lengths, j_lengths)
     assert i2j_many2one == {}
     j2i_many2one = _get_many2one(j2i_miss, i2j_miss, j_lengths, i_lengths)
@@ -82,8 +82,8 @@ def test_align_many_to_one():
     assert list(i2j) == [-1, -1, -1, -1, 2, -1, -1, 4]
     lengths1 = [len(w) for w in words1]
     lengths2 = [len(w) for w in words2]
-    i2j_miss = _get_regions(i2j, lengths1)
-    j2i_miss = _get_regions(j2i, lengths2)
+    i2j_miss = _get_regions(i2j, lengths1, words1, words2)
+    j2i_miss = _get_regions(j2i, lengths2, words2, words1)
     i2j_multi = _get_many2one(i2j_miss, j2i_miss, lengths1, lengths2)
     assert i2j_multi[0] == 0
     assert i2j_multi[1] == 0
