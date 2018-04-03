@@ -83,6 +83,7 @@ cdef cppclass StateC:
         this._buffer += PADDING
         this._stack += PADDING
         this.shifted += PADDING
+        this.was_split += PADDING
         this.length = length
         this.buffer_length = length
         this.max_split = MAX_SPLIT
@@ -109,51 +110,51 @@ cdef cppclass StateC:
         free(this._buffer - PADDING)
         free(this._stack - PADDING)
         free(this.shifted - PADDING)
-        free(this.was_split)
+        free(this.was_split - PADDING)
 
     void set_context_tokens(int* ids, int n) nogil:
         if n == 2:
-            ids[0] = this.B(0)
-            ids[1] = this.S(0)
+            ids[0] = this.B(0) % this.length
+            ids[1] = this.S(0) % this.length
         if n == 8:
-            ids[0] = this.B(0)
-            ids[1] = this.B(1)
-            ids[2] = this.S(0)
-            ids[3] = this.S(1)
-            ids[4] = this.S(2)
-            ids[5] = this.L(this.B(0), 1)
-            ids[6] = this.L(this.S(0), 1)
-            ids[7] = this.R(this.S(0), 1)
+            ids[0] = this.B(0) % this.length
+            ids[1] = this.B(1) % this.length
+            ids[2] = this.S(0) % this.length
+            ids[3] = this.S(1) % this.length
+            ids[4] = this.S(2) % this.length
+            ids[5] = this.L(this.B(0), 1) % this.length
+            ids[6] = this.L(this.S(0), 1) % this.length
+            ids[7] = this.R(this.S(0), 1) % this.length
         elif n == 13:
-            ids[0] = this.B(0)
-            ids[1] = this.B(1)
-            ids[2] = this.S(0)
-            ids[3] = this.S(1)
-            ids[4] = this.S(2)
-            ids[5] = this.L(this.S(0), 1)
-            ids[6] = this.L(this.S(0), 2)
-            ids[6] = this.R(this.S(0), 1)
-            ids[7] = this.L(this.B(0), 1)
-            ids[8] = this.R(this.S(0), 2)
-            ids[9] = this.L(this.S(1), 1)
-            ids[10] = this.L(this.S(1), 2)
-            ids[11] = this.R(this.S(1), 1)
-            ids[12] = this.R(this.S(1), 2)
+            ids[0] = this.B(0) % this.length
+            ids[1] = this.B(1) % this.length
+            ids[2] = this.S(0) % this.length
+            ids[3] = this.S(1) % this.length
+            ids[4] = this.S(2) % this.length
+            ids[5] = this.L(this.S(0), 1) % this.length
+            ids[6] = this.L(this.S(0), 2) % this.length
+            ids[6] = this.R(this.S(0), 1) % this.length
+            ids[7] = this.L(this.B(0), 1) % this.length
+            ids[8] = this.R(this.S(0), 2) % this.length
+            ids[9] = this.L(this.S(1), 1) % this.length
+            ids[10] = this.L(this.S(1), 2) % this.length
+            ids[11] = this.R(this.S(1), 1) % this.length
+            ids[12] = this.R(this.S(1), 2) % this.length
         elif n == 6:
             if this.B(0) >= 0:
-                ids[0] = this.B(0)
-                ids[1] = this.B(0)-1
+                ids[0] = this.B(0) % this.length
+                ids[1] = (this.B(0)-1) % this.length
             else:
                 ids[0] = -1
                 ids[1] = -1
-            ids[2] = this.B(1)
-            ids[3] = this.E(0)
+            ids[2] = this.B(1) % this.length
+            ids[3] = this.E(0) % this.length
             if ids[3] >= 1:
-                ids[4] = this.E(0)-1
+                ids[4] = (this.E(0)-1) % this.length
             else:
                 ids[4] = -1
             if (ids[3]+1) < this.length:
-                ids[5] = this.E(0)+1
+                ids[5] = (this.E(0)+1) % this.length
             else:
                 ids[5] = -1
         else:
@@ -518,6 +519,7 @@ cdef cppclass StateC:
         memcpy(this._buffer, src._buffer, length_with_split * sizeof(int))
         memcpy(this._ents, src._ents, length_with_split * sizeof(Entity))
         memcpy(this.shifted, src.shifted, length_with_split * sizeof(this.shifted[0]))
+        memcpy(this.was_split, src.was_split, length_with_split * sizeof(this.was_split[0]))
         this._b_i = src._b_i
         this._s_i = src._s_i
         this._e_i = src._e_i
