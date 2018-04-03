@@ -180,10 +180,7 @@ class Alignment(object):
         gold_words = [w.replace(' ', '') for w in gold_words]
         cost, i2j, j2i, matrix = levenshtein_align(cand_words, gold_words)
 
-        i_lengths = [len(w) for w in cand_words]
-        j_lengths = [len(w) for w in gold_words]
-
-        cand2gold, gold2cand = multi_align(i2j, j2i, i_lengths, j_lengths)
+        cand2gold, gold2cand = multi_align(i2j, j2i, cand_words, gold_words)
         return cost, cand2gold, gold2cand
 
     @staticmethod
@@ -259,7 +256,7 @@ def levenshtein_align(S, T):
     return matrix[-1,-1], i2j, j2i, matrix
 
 
-def multi_align(np.ndarray i2j, np.ndarray j2i, i_lengths, j_lengths):
+def multi_align(np.ndarray i2j, np.ndarray j2i, i_words, j_words):
     '''Let's say we had:
 
     Guess: [aa bb cc dd]
@@ -272,8 +269,11 @@ def multi_align(np.ndarray i2j, np.ndarray j2i, i_lengths, j_lengths):
     i2j_multi: {1: 1, 2: 1}
     j2i_multi: {}
     '''
-    i2j_miss = _get_regions(i2j, i_lengths)
-    j2i_miss = _get_regions(j2i, j_lengths)
+    i_lengths = [len(w) for w in i_words]
+    j_lengths = [len(w) for w in j_words]
+
+    i2j_miss = _get_regions(i2j, i_lengths, i_words, j_words)
+    j2i_miss = _get_regions(j2i, j_lengths, j_words, i_words)
     
     i2j_many2one = _get_many2one(i2j_miss, j2i_miss, i_lengths, j_lengths)
     j2i_many2one = _get_many2one(j2i_miss, i2j_miss, j_lengths, i_lengths)
@@ -309,12 +309,12 @@ def _convert_multi_align(one2one, many2one, one2many, one2part):
     return output
 
 
-def _get_regions(alignment, lengths):
+def _get_regions(alignment, lengths, i_words, j_words):
     regions = {}
     start = None
     offset = 0
     for i in range(len(alignment)):
-        if alignment[i] < 0:
+        if alignment[i] < 0 or i_words[i] != j_words[alignment[i]]:
             if start is None:
                 start = offset
                 regions.setdefault(start, [])
