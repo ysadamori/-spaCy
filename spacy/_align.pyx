@@ -251,10 +251,10 @@ def levenshtein_align(S, T):
     fill_i2j(i2j, matrix)
     fill_j2i(j2i, matrix)
     for i in range(i2j.shape[0]):
-        if i2j[i] >= 0 and len(S[i]) != len(T[i2j[i]]):
+        if i2j[i] >= 0 and S[i] != T[i2j[i]]:
             i2j[i] = -1
     for j in range(j2i.shape[0]):
-        if j2i[j] >= 0 and len(T[j]) != len(S[j2i[j]]):
+        if j2i[j] >= 0 and T[j] != S[j2i[j]]:
             j2i[j] = -1
     return matrix[-1,-1], i2j, j2i, matrix
 
