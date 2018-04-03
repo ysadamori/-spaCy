@@ -407,6 +407,9 @@ cdef class ArcEager(TransitionSystem):
     def __init__(self, *args, **kwargs):
         TransitionSystem.__init__(self, *args, **kwargs)
         self.init_beam_state = _init_state
+        if USE_SPLIT:
+            for i in range(1, MAX_SPLIT):
+                self.add_action(SPLIT, str(i))
 
     @classmethod
     def get_actions(cls, **kwargs):
@@ -519,13 +522,16 @@ cdef class ArcEager(TransitionSystem):
                     gold.c.labels[index] = 0
                     gold.c.has_dep[index] = False
             for i in range(len(gold)):
-                if isinstance(gold.heads[i], list):
+                if isinstance(gold.heads[i], list) and len(gold.heads[i]) <= MAX_SPLIT:
                     gold.c.fused[i] = len(gold.heads)-1
                 else:
                     gold.c.fused[i] = 0
         for child_i, (head_group, dep_group) in enumerate(zip(gold.heads, gold.labels)):
             if not USE_SPLIT and (isinstance(head_group, list) or isinstance(head_group, tuple)):
                 # Set as missing values if we don't handle token splitting
+                head_group = [(None, 0)]
+                dep_group = [None]
+            elif isinstance(head_group, list) and len(head_group) > MAX_SPLIT:
                 head_group = [(None, 0)]
                 dep_group = [None]
             if not isinstance(head_group, list):
@@ -540,6 +546,9 @@ cdef class ArcEager(TransitionSystem):
                 if not USE_SPLIT:
                     head_j = 0
                     child_j = 0
+                if head_j >= MAX_SPLIT:
+                    head_i = None
+                    dep = None
                 child_index = child_j * len(gold) + child_i
                 # Missing values
                 if head_i is None or dep is None:
@@ -720,6 +729,12 @@ cdef class ArcEager(TransitionSystem):
                 is_valid[i] = False
                 costs[i] = 9000
         if n_gold < 1:
+            print("Heads for length", len(gold))
+            print([(i, gold.c.heads[i]) for i in range(len(gold))])
+            print(gold.words)
+            print(gold.labels)
+            print(list(gold.heads))
+            print(list(enumerate(gold.labels)))
             # Check label set --- leading cause
             label_set = set([self.strings[self.c[i].label] for i in range(self.n_moves)])
             for label_str in gold.labels:
@@ -728,7 +743,7 @@ cdef class ArcEager(TransitionSystem):
                 if label_str is not None and label_str not in label_set:
                     raise ValueError("Cannot get gold parser action: unknown label: %s" % label_str)
             # Check projectivity --- other leading cause
-            if nonproj.is_nonproj_tree(gold.heads):
+            if nonproj.is_nonproj_tree(gold._alignment.flatten(gold.heads)):
                 raise ValueError(
                     "Could not find a gold-standard action to supervise the "
                     "dependency parser. Likely cause: the tree is "
