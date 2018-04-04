@@ -419,7 +419,6 @@ cdef cppclass StateC:
         # buffer[4:8] = buffer[5:9]
         # buffer[8:9] = new_tokens
         cdef int target = this.B(i)
-        this.was_split[target] = n
         this._b_i -= n
         memmove(&this._buffer[this._b_i],
             &this._buffer[this._b_i+n], (i+1)*sizeof(this._buffer[0]))
@@ -430,6 +429,8 @@ cdef cppclass StateC:
         this.buffer_length += n
         if this._n_until_break != -1:
             this._n_until_break += n
+        for i in range(n+1):
+            this.was_split[this.B(i)] = n
 
     void pop() nogil:
         if this._s_i >= 1:
