@@ -10,6 +10,8 @@ from collections import OrderedDict, defaultdict, Counter
 from thinc.extra.search cimport Beam
 import json
 
+from ..typedefs cimport hash_t
+from ..strings cimport hash_string
 from .stateclass cimport StateClass
 from ._state cimport StateC
 from . import nonproj
@@ -20,6 +22,7 @@ from ..structs cimport TokenC
 # Calculate cost as gold/not gold. We don't use scalar value anyway.
 cdef int BINARY_COSTS = 1
 cdef weight_t MIN_SCORE = -90000
+cdef hash_t SUBTOK_LABEL = hash_string('subtok')
 
 # Sets NON_MONOTONIC, USE_BREAK, USE_SPLIT, MAX_SPLIT
 include "compile_time.pxi"
@@ -261,7 +264,6 @@ cdef class LeftArc:
 
     @staticmethod
     cdef weight_t cost(StateClass s, const GoldParseC* gold, attr_t label) nogil:
-        # TODO: Handle oracle for incorrect splits
         cdef weight_t move_cost = LeftArc.move_cost(s, gold)
         cdef weight_t label_cost = LeftArc.label_cost(s, gold, label)
         return move_cost + label_cost
@@ -269,19 +271,29 @@ cdef class LeftArc:
     @staticmethod
     cdef inline weight_t move_cost(StateClass s, const GoldParseC* gold) nogil:
         cdef weight_t cost = 0
-        if arc_is_gold(gold, s.B(0), s.S(0)):
+        # Try to repair incorrect split move, using the merge (L-subtok) move.
+        if s.c.was_split[s.c.S(0)] \
+        and not gold.fused[s.c.S(0)] \
+        and (s.c.S(0) % s.c.length) == (s.c.B(0) % s.c.length):
+            return 0
+        if arc_is_gold(gold, s.c.B(0), s.c.S(0)):
             # Have a negative cost if we 'recover' from the wrong dependency
-            return 0 if not s.has_head(s.S(0)) else -1
+            return 0 if not s.has_head(s.c.S(0)) else -1
         else:
             # Account for deps we might lose between S0 and stack
-            if not s.has_head(s.S(0)):
-                for i in range(1, s.stack_depth()):
+            if not s.has_head(s.c.S(0)):
+                for i in range(1, s.c.stack_depth()):
                     cost += gold.heads[s.S(i)] == s.S(0)
                     cost += gold.heads[s.S(0)] == s.S(i)
             return cost + pop_cost(s, gold, s.S(0)) + arc_cost(s, gold, s.B(0), s.S(0))
 
     @staticmethod
     cdef inline weight_t label_cost(StateClass s, const GoldParseC* gold, attr_t label) nogil:
+        # If we're dealing with an incorrect split, ensure label is SUBTOK.
+        if s.c.was_split[s.S(0)] \
+        and not gold.fused[s.S(0)] \
+        and (s.c.S(0) % s.c.length) == (s.c.B(0) % s.c.length):
+            return 0 if label == SUBTOK_LABEL else 1
         return arc_is_gold(gold, s.B(0), s.S(0)) and not label_is_gold(gold, s.B(0), s.S(0), label)
 
 
