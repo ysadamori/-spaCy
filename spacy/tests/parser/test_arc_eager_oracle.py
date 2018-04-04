@@ -221,6 +221,39 @@ def test_oracle_overlong_split(arc_eager, vocab):
     M.transition(state, 0)
     assert M.get_cost(state, gold, 0) == 0 
 
+
+def test_oracle_nongold_split(arc_eager, vocab):
+    '''Test oracle from states following a bad split.'''
+    if arc_eager.max_split < 2:
+        return
+    gold_words = ['a', 'b', 'c', 'd']
+    words = ['a', 'b', 'c', 'd']
+    doc = Doc(vocab, words=words)
+    heads = [1, 1, 3, 3]
+    deps = ['dep', 'ROOT', 'dep', 'ROOT']
+    gold = GoldParse(doc, words=gold_words, heads=heads, deps=deps)
+    assert gold.heads == heads
+    assert gold.labels == deps
+    state = StateClass(doc)
+    M = arc_eager
+    M.preprocess_gold(gold)
+    assert gold.fused[0] == 0
+    assert gold.fused[1] == 0
+    assert gold.fused[2] == 0
+    assert gold.fused[3] == 0
+    assert M.get_cost(state, gold, 0) == 0 
+    M.transition(state, 0)
+    assert M.get_cost(state, gold, 'L-dep') == 0 
+    M.transition(state, 'L-dep')
+    assert M.get_cost(state, gold, 'P-1') != 0 
+    M.transition(state, 'P-1')
+    assert M.get_cost(state, gold, 'S') == 0 
+    assert M.get_cost(state, gold, 'P-1') == 9000
+    M.transition(state, 'S')
+    assert M.get_cost(state, gold, 'P-1') == 9000
+    assert M.get_cost(state, gold, 'L-subtok') == 0 
+
+
 def test_oracle_oversegment_undersegment(arc_eager, vocab):
     words = ['a', 'b', 'cd', 'e'] 
     gold_words = ['ab', 'c', 'd', 'e']
