@@ -521,51 +521,16 @@ cdef class ArcEager(TransitionSystem):
         subtok_label = self.strings['subtok']
         if USE_SPLIT:
             gold.resize_arrays(MAX_SPLIT * len(gold))
-            # Subtokens are addressed by (subposition, position).
-            # This way the 'normal' tokens (at subposition 0) occupy positions
-            # 0...n in the array.
-            for i in range(1, MAX_SPLIT):
-                for j in range(len(gold)):
-                    index = i * len(gold) + j
-                    # If we've incorrectly split, we want to join them back
-                    # up -- so, set the head of each subtoken to the following
-                    # subtoken (until the end), and set the label to 'subtok'.
-                    gold.c.heads[index] = (i+1)*len(gold) + j
-                    gold.c.labels[index] = subtok_label
-                    gold.c.has_dep[index] = True
-                for j in range(len(gold)):
-                    # For the last subtoken in each position, set head to 'unknown'.
-                    gold.c.heads[index] = index
-                    gold.c.labels[index] = 0
-                    gold.c.has_dep[index] = False
             for i in range(len(gold)):
                 if isinstance(gold.heads[i], list) and len(gold.heads[i]) <= MAX_SPLIT:
-                    gold.c.fused[i] = len(gold.heads)-1
+                    gold.c.fused[i] = len(gold.heads[i])-1
                 else:
                     gold.c.fused[i] = 0
-        for child_i, (head_group, dep_group) in enumerate(zip(gold.heads, gold.labels)):
-            if not USE_SPLIT and (isinstance(head_group, list) or isinstance(head_group, tuple)):
-                # Set as missing values if we don't handle token splitting
-                head_group = [(None, 0)]
-                dep_group = [None]
-            elif isinstance(head_group, list) and len(head_group) > MAX_SPLIT:
-                head_group = [(None, 0)]
-                dep_group = [None]
-            if not isinstance(head_group, list):
-                # Map the simple format into the elaborate one we need for
-                # the fused tokens.
-                head_group = [head_group]
-                dep_group = [dep_group]
+
+        heads, labels = self._fix_heads_labels_format(gold)
+        for child_i, (head_group, dep_group) in enumerate(zip(heads, labels)):
             for child_j, (head_addr, dep) in enumerate(zip(head_group, dep_group)):
-                if not isinstance(head_addr, tuple):
-                    head_addr = (head_addr, 0)
                 head_i, head_j = head_addr
-                if not USE_SPLIT:
-                    head_j = 0
-                    child_j = 0
-                if head_j >= MAX_SPLIT:
-                    head_i = None
-                    dep = None
                 child_index = child_j * len(gold) + child_i
                 # Missing values
                 if head_i is None or dep is None:
@@ -580,22 +545,53 @@ cdef class ArcEager(TransitionSystem):
                 else:
                     action = BREAK
                 if dep not in self.labels[action]:
-                    if action == BREAK:
-                        dep = 'ROOT'
-                    elif nonproj.is_decorated(dep):
-                        backoff = nonproj.decompose(dep)[0]
-                        if backoff in self.labels[action]:
-                            dep = backoff
-                        else:
-                            dep = 'dep'
-                    else:
-                        dep = 'dep'
+                    dep = self._backoff_label(dep, action)
                 gold.c.has_dep[child_index] = True
                 if dep.upper() == 'ROOT':
                     dep = 'ROOT'
                 gold.c.heads[child_index] = head_index
                 gold.c.labels[child_index] = self.strings.add(dep)
         return gold
+
+    def _fix_heads_labels_format(self, gold):
+        heads = []
+        labels = []
+        for child_i, (head_group, dep_group) in enumerate(zip(gold.heads, gold.labels)):
+            if not USE_SPLIT and (isinstance(head_group, list) or isinstance(head_group, tuple)):
+                # Set as missing values if we don't handle token splitting
+                head_group = [(None, 0)]
+                dep_group = [None]
+            if isinstance(head_group, list) and len(head_group) > MAX_SPLIT:
+                head_group = [(None, 0)]
+                dep_group = [None]
+            if not isinstance(head_group, list):
+                # Map the simple format into the elaborate one we need for
+                # the fused tokens.
+                head_group = [head_group]
+                dep_group = [dep_group]
+            heads.append([])
+            labels.append([])
+            for child_j, (head_addr, dep) in enumerate(zip(head_group, dep_group)):
+                if not isinstance(head_addr, tuple):
+                    head_addr = (head_addr, 0)
+                head_i, head_j = head_addr
+                if not USE_SPLIT:
+                    head_j = 0
+                    child_j = 0
+                elif head_j >= MAX_SPLIT:
+                    head_i = None
+                    dep = None
+                heads[-1].append((head_i, head_j))
+                labels[-1].append(dep)
+        return heads, labels
+
+    def _backoff_label(self, dep, action):
+        if action == BREAK:
+            return 'ROOT'
+        elif not nonproj.is_decorated(dep):
+            return 'dep'
+        backoff = nonproj.decompose(dep)[0]
+        return backoff if backoff in self.labels[action] else 'dep'
 
     def get_beam_parses(self, Beam beam):
         parses = []
@@ -803,3 +799,5 @@ cdef class ArcEager(TransitionSystem):
                     deps[j].setdefault(dep, 0.0)
                     deps[j][dep] += prob
         return heads, deps
+
+
