@@ -454,7 +454,10 @@ cdef class ArcEager(TransitionSystem):
 
     property max_split:
         def __get__(self):
-            return MAX_SPLIT
+            if not USE_SPLIT:
+                return 0
+            else:
+                return MAX_SPLIT
 
     property action_types:
         def __get__(self):
