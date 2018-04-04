@@ -220,14 +220,16 @@ def test_oracle_overlong_split(arc_eager, vocab):
     assert M.get_cost(state, gold, 0) == 0 
     M.transition(state, 0)
     assert M.get_cost(state, gold, 0) == 0 
-    #state, cost_history = get_sequence_costs(arc_eager, words, gold_words, heads, deps, actions)
-    #assert state.is_final()
-    #for i, state_costs in enumerate(cost_history):
-    #    # Check gold moves is 0 cost
-    #    assert state_costs[actions[i]] == 0.0, actions[i]
-    #    for other_action, cost in state_costs.items():
-    #        if other_action != actions[i]:
-    #            assert cost >= 1, (i, other_action, actions[i])
+
+def test_oracle_oversegment_undersegment(arc_eager, vocab):
+    words = ['a', 'b', 'cd', 'e'] 
+    gold_words = ['ab', 'c', 'd', 'e']
+    heads = [1, 2, 2, 2]
+    deps = ['dep', 'dep', 'ROOT', 'dep']
+    doc = Doc(vocab, words=words)
+    gold = GoldParse(doc, words=gold_words, heads=heads, deps=deps)
+    assert gold.heads == [1, (2, 0), [(2, 1), (2, 1)], (2, 1)]
+    assert gold.labels == ['subtok', 'dep', ['dep', 'ROOT'], 'dep']
 
 
 annot_tuples = [

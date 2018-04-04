@@ -1,8 +1,33 @@
 from __future__ import unicode_literals
 import pytest
+
+
 from numpy.testing import assert_array_equal
 from .._align import levenshtein_align, multi_align, Alignment
 from .._align import _get_regions, _get_many2one
+from .._align import rethink_alignment
+
+
+def test_rethink():
+    words1 = ['a', 'bc', 'd']
+    words2 = ['a', 'b', 'c', 'd']
+
+    a2b, b2a = rethink_alignment(words1, words2)
+    assert a2b == [0, [1,2], 3]
+    assert b2a == [0, (1,0), (1,1), 2]
+    words1 = ['ab', 'c', 'd', 'e']
+    words2 = ['a', 'b', 'cd', 'e']
+    a2b, b2a = rethink_alignment(words1, words2)
+    assert a2b == [[0,1], (2,0), (2,1), 3]
+    assert b2a == [(0,0), (0,1), [1,2], 3]
+
+
+def test_rethink_misalign():
+    words1 = ['shooting', 'their', 'AK', '-', "47's", 'in', 'the', 'air']
+    words2 = ['shooting', 'their', 'AK-47', "'s", 'in', 'the', 'air']
+    a2b, b2a = rethink_alignment(words1, words2)
+    assert a2b == [0, 1, None, None, None, 4, 5, 6]
+    assert b2a == [0, 1, None, None, 5, 6, 7]
 
 
 @pytest.mark.parametrize('string1,string2,cost', [
@@ -114,8 +139,6 @@ def test_alignment_class_undersegment():
 def test_alignment_oversegment_undersegment():
     words1 = ['a', 'b', 'cd', 'e'] 
     words2 = ['ab', 'c', 'd', 'e']
-    print('i', words1)
-    print('j', words2)
     A = Alignment(words1, words2)
     assert A._y2t == [(0, 0), (0, 1), [1, 2], 3]
 

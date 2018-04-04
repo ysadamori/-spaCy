@@ -40,6 +40,10 @@ def parser(vocab):
 def test_init_parser(parser):
     pass
 
+def test_init_parser_twice():
+    p1 = parser(vocab())
+    p2 = parser(vocab())
+
 # TODO: This is flakey, because it depends on what the parser first learns.
 def test_add_label(parser):
     doc = Doc(parser.vocab, words=['a', 'b', 'c', 'd'])

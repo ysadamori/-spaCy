@@ -12,8 +12,8 @@ def test_over_segmented():
     doc = Doc(Vocab(),  words=['a', 'b', 'c'])
     gold = GoldParse(doc, words=['ab', 'c'], heads=[1,1])
     assert gold._alignment._y2t == [(0, 0), (0, 1), 1]
-    assert gold.labels == ['subtok', None, None]
     assert gold.heads == [1, 2, 2]
+    assert gold.labels == ['subtok', None, None]
                        
                        
 def test_under_segmented():
@@ -38,4 +38,4 @@ def test_under_segmented_attach_inside_fused():
     gold = GoldParse(doc, words=['a', 'b', 'c'], heads=[1,1,1])
     assert gold.heads == [[(0, 1), (0, 1)], (0, 1)]
     assert gold.labels == [[None, None], None]
-                      
+                    
