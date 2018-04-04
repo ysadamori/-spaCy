@@ -426,12 +426,6 @@ cdef class GoldParse:
         self.c.fused = <int*>self.mem.alloc(len(doc), sizeof(int))
 
         self.cats = {} if cats is None else dict(cats)
-        self.words = [None] * len(doc)
-        self.tags = [None] * len(doc)
-        self.heads = [None] * len(doc)
-        self.labels = [None] * len(doc)
-        self.ner = [None] * len(doc)
-
         # This needs to be done before we align the words
         if make_projective and heads is not None and deps is not None:
             heads, deps = nonproj.projectivize(heads, deps)
@@ -451,64 +445,29 @@ cdef class GoldParse:
         annot_tuples = (range(len(words)), words, tags, heads, deps, entities)
         self.orig_annot = list(zip(*annot_tuples))
 
-        self.words = self._alignment.to_yours(words)
-        self.tags = self._alignment.to_yours(tags)
-        self.labels = self._alignment.to_yours(deps)
-        self.tags = self._alignment.to_yours(tags)
-        self.ner = self._alignment.to_yours(entities)
-        for gold_i, gold_head in enumerate(heads):
-            if gold_head is None:
-                continue
-            cand_i = self._alignment._t2y[gold_i]
-            cand_head = self._alignment._t2y[gold_head]
-            if cand_i is None or cand_head is None:
-                continue
-            elif isinstance(cand_i, int):
-                self.heads[cand_i] = cand_head
-            elif isinstance(cand_i, list):
-                for sub_i in cand_i[:-1]:
-                    self.heads[sub_i] = sub_i+1
-                if isinstance(cand_head, list):
-                    self.heads[cand_i[-1]] = cand_head[-1]
-                else:
-                    self.heads[cand_i[-1]] = cand_head
-            elif isinstance(cand_i, tuple) and not isinstance(cand_head, list): 
-                # We only handle one-to-many or many-to-one, not many-to-many
-                cand_i, sub_i = cand_i
-                if not isinstance(self.heads[cand_i], list):
-                    self.heads[cand_i] = []
-                while len(self.heads[cand_i]) <= sub_i:
-                    self.heads[cand_i].append(None)
-                self.heads[cand_i][sub_i] = cand_head
-
+        self.words = self.align_words_from_gold(words)
+        self.tags = self.align_tags_from_gold(tags)
+        self.labels = self.align_deps_from_gold(deps)
+        self.heads = self.align_heads_from_gold(heads)
+        self.ner = self.align_entities_from_gold(entities)
+        # Fix spaces
         for i in range(len(doc)):
-            # Fix spaces
             if doc[i].text.isspace():
                 self.words[i] = doc[i].text
                 self.tags[i] = '_SP'
                 self.heads[i] = None
                 self.labels[i] = None
                 self.ner[i] = 'O'
-            elif isinstance(self.labels[i], tuple):
-                sub_i = self.labels[i][1]
-                # If we're at the end of the subtoken, use the head and label
-                if (i+1) == len(self.labels) \
-                or not isinstance(self.labels[i+1], tuple) \
-                or self.labels[i][1] < sub_i:
-                    self.labels[i] = self.labels[i][0]
-                else:
-                    self.labels[i] = 'subtok'
-                    #self.heads[i] = i+1
 
-        cycle = nonproj.contains_cycle(self._alignment.flatten(self.heads))
-        if cycle is not None:
-            print(repr(doc.text))
-            print([t.text for t in doc])
-            print(words)
-            print(self.labels)
-            print(list(enumerate(self.heads)))
-            print(heads)
-            raise Exception("Cycle found: %s" % cycle)
+        #cycle = nonproj.contains_cycle(self._alignment.flatten(self.heads))
+        #if cycle is not None:
+        #    print(repr(doc.text))
+        #    print([t.text for t in doc])
+        #    print(words)
+        #    print(self.labels)
+        #    print(list(enumerate(self.heads)))
+        #    print(heads)
+        #    raise Exception("Cycle found: %s" % cycle)
 
     def __len__(self):
         """Get the number of predicted tokens the annotations have been aligned to.
@@ -520,6 +479,57 @@ cdef class GoldParse:
     @property
     def fused(self):
         return [self.c.fused[i] for i in range(self.length)]
+    
+    def align_words_from_gold(self, gold_words):
+        return self._alignment.to_yours(gold_words)
+
+    def align_words_to_gold(self, guess_words):
+        return self._alignment.to_theirs(guess_words)
+
+    def align_entities_from_gold(self, gold_entities):
+        return self._alignment.to_yours(gold_entities)
+
+    def align_entities_to_gold(self, guess_entities):
+        return self._alignment.to_theirs(guess_entities)
+
+    def align_tags_from_gold(self, gold_tags):
+        return self._alignment.to_yours(gold_tags)
+
+    def align_tags_to_gold(self, guess_tags):
+        return self._alignment.to_theirs(guess_tags)
+
+    def align_heads_from_gold(self, gold_heads):
+        aligned_heads = self._alignment.to_yours(gold_heads)
+        aligned_heads = [self._alignment.index_to_yours(v) for v in aligned_heads]
+        output = []
+        for i, value in enumerate(aligned_heads):
+            if self._alignment.is_subtoken_in_yours(i):
+                # If we're non-fianl subtoken, attach to next subtoken.
+                if self._alignment.is_nonfinal_subtoken_in_yours(i):
+                    output.append(i+1)
+                else:
+                    # The last subtoken in a region gets the outgoing arc.
+                    output.append(value[0])
+            else:
+                output.append(value)
+        return output
+    
+    def align_heads_to_gold(self, gold_heads):
+        raise NotImplementedError
+    
+    def align_deps_from_gold(self, gold_heads):
+        deps = self._alignment.to_yours(gold_heads)
+        # Fix oversegmentation
+        for i, value in enumerate(deps):
+            # If we're a subtoken, take the label 'subtok'
+            if self._alignment.is_nonfinal_subtoken_in_yours(i):
+                deps[i] = 'subtok'
+            elif isinstance(value, tuple):
+                deps[i] = value[0]
+        return deps
+    
+    def align_deps_to_gold(self, gold_heads):
+        raise NotImplementedError
 
     def resize_arrays(self, int new_size):
         # These are filled by the tagger/parser/entity recogniser

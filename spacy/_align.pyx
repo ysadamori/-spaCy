@@ -92,6 +92,65 @@ from murmurhash.mrmr cimport hash32
 from collections import Counter
 
 
+def rethink_alignment(A, B):
+    '''Simplified implementation, exploiting stronger assumptions about
+    match requirements. Doesn't need Levenshtein, so much easier!'''
+    a2b = []
+    b2a = []
+    a = 0
+    b = 0
+
+    def _align_region(x2y, y2x, X, Y, x, y):
+        while Y[y].startswith(token):
+            x2y.append((y, len(y2x[-1])))
+            y2x[-1].append(x)
+            x += 1
+            if Y[y] == token:
+                y += 1
+                break
+            token += X[x]
+        return x, y
+
+    while a < len(A) and b < len(B):
+        if A[a] == B[b]:
+            a2b.append(b)
+            b2a.append(a)
+            a += 1
+            b += 1
+        else:
+            a_token = A[a]
+            b_token = B[b]
+            a_region = [a]
+            b_region = [b]
+            while a_token != b_token:
+                if b_token.startswith(a_token):
+                    a += 1
+                    a_token += A[a]
+                    a_region.append(a)
+                elif a_token.startswith(b_token):
+                    b += 1
+                    b_token += B[b]
+                    b_region.append(b)
+                else:
+                    print(A)
+                    print(B)
+                    raise ValueError("Mismatched tokens during alignment: (%s, %s)" % (a_token, b_token)) 
+            a += 1
+            b += 1
+            if len(a_region) == 1:
+                assert len(b_region) >= 2
+                a2b.append(list(b_region))
+                b2a.extend([(a_region[0], i) for i in range(len(b_region))])
+            elif len(b_region) == 1:
+                assert len(a_region) >= 2
+                b2a.append(list(a_region))
+                a2b.extend([(b_region[0], i) for i in range(len(a_region))])
+            else:
+                a2b.extend([None] * len(a_region))
+                b2a.extend([None] * len(b_region))
+    return a2b, b2a
+
+
 class Alignment(object):
     def __init__(self, your_words, their_words):
         cost, your2their, their2your = self._align(your_words, their_words)
@@ -128,22 +187,30 @@ class Alignment(object):
         '''Translate an index that points into their tokens to point into yours'''
         if index is None:
             return None
+        elif isinstance(index, tuple):
+            return (self._t2y[index[0]], index[1])
+        elif isinstance(index, list):
+            return [self.index_to_yours(v) for v in index]
         else:
             alignment = self._t2y[index]
             return alignment
-        #if isinstance(alignment, int):
-        #    return alignment
-        #elif len(alignment) == 1 and isinstance(alignment, int):
-        #    return alignment[0]
-        #elif len(alignment) == 1:
-        #    return alignment[0][0]
-        #if len(alignment) == 1 and alignment[0][2] == 0:
-        #    return alignment[0][0]
-        #else:
-        #    output = []
-        #    for i1, i2, n_to_go in alignment:
-        #        output.append((i1, i2, n_to_go))
-        #    return output
+
+    def is_subtoken_in_yours(self, i):
+        return isinstance(self._y2t[i], tuple)
+
+    def is_nonfinal_subtoken_in_yours(self, i):
+        value = self._y2t[i]
+        if not isinstance(value, tuple):
+            return False
+        elif (i+1) == len(self._y2t):
+            return False
+        next_value = self._y2t[i+1]
+        if not isinstance(next_value, tuple):
+            return False
+        elif value[0] != next_value[0]:
+            return False
+        else:
+            return True
     
     def to_theirs(self, items):
         raise NotImplementedError
@@ -176,12 +243,8 @@ class Alignment(object):
         '''
         if cand_words == gold_words:
             return 0, list(range(len(cand_words))), list(range(len(cand_words)))
-        cand_words = [w.replace(' ', '') for w in cand_words]
-        gold_words = [w.replace(' ', '') for w in gold_words]
-        cost, i2j, j2i, matrix = levenshtein_align(cand_words, gold_words)
-
-        cand2gold, gold2cand = multi_align(i2j, j2i, cand_words, gold_words)
-        return cost, cand2gold, gold2cand
+        cand2gold, gold2cand = rethink_alignment(cand_words, gold_words)
+        return 1, cand2gold, gold2cand
 
     @staticmethod
     def flatten(heads):
@@ -233,6 +296,11 @@ class Alignment(object):
         return new
 
 
+# This is no longer necessary, as we've taken a simpler approach to alignment
+# that assumes the texts exactly match. Leaving this here as I did sweat over
+# it, it may be useful in future, and I believe it to be correct and pretty
+# efficient.
+
 def levenshtein_align(S, T):
     cdef int m = len(S)
     cdef int n = len(T)
@@ -255,6 +323,65 @@ def levenshtein_align(S, T):
             j2i[j] = -1
     return matrix[-1,-1], i2j, j2i, matrix
 
+
+cdef void fill_matrix(int* D, 
+        const int* S, int m, const int* T, int n) nogil:
+    m1 = m+1
+    n1 = n+1
+    for i in range(m1*n1):
+        D[i] = 0
+ 
+    for i in range(m1):
+        D[i*n1] = i
+ 
+    for j in range(n1):
+        D[j] = j
+ 
+    cdef int sub_cost, ins_cost, del_cost
+    for j in range(n):
+        for i in range(m):
+            i_j = i*n1 + j
+            i1_j1 = (i+1)*n1 + j+1
+            i1_j = (i+1)*n1 + j
+            i_j1 = i*n1 + j+1
+            if S[i] != T[j]:
+                sub_cost = D[i_j] + 1
+            else:
+                sub_cost = D[i_j]
+            del_cost = D[i_j1] + 1
+            ins_cost = D[i1_j] + 1
+            best = min(min(sub_cost, ins_cost), del_cost)
+            D[i1_j1] = best
+
+
+cdef void fill_i2j(np.ndarray i2j, np.ndarray D) except *:
+    j = D.shape[1]-2
+    cdef int i = D.shape[0]-2
+    while i >= 0:
+        while D[i+1, j] < D[i+1, j+1]:
+            j -= 1
+        if D[i, j+1] < D[i+1, j+1]:
+            i2j[i] = -1
+        else:
+            i2j[i] = j
+            j -= 1
+        i -= 1
+
+cdef void fill_j2i(np.ndarray j2i, np.ndarray D) except *:
+    i = D.shape[0]-2
+    cdef int j = D.shape[1]-2
+    while j >= 0:
+        while D[i, j+1] < D[i+1, j+1]:
+            i -= 1
+        if D[i+1, j] < D[i+1, j+1]:
+            j2i[j] = -1
+        else:
+            j2i[j] = i
+            i -= 1
+        j -= 1
+
+# This multi-align stuff is not correct, and should be deleted once the
+# code is stable.
 
 def multi_align(np.ndarray i2j, np.ndarray j2i, i_words, j_words):
     '''Let's say we had:
@@ -384,58 +511,3 @@ def _convert_sequence(seq):
     return output
 
 
-cdef void fill_matrix(int* D, 
-        const int* S, int m, const int* T, int n) nogil:
-    m1 = m+1
-    n1 = n+1
-    for i in range(m1*n1):
-        D[i] = 0
- 
-    for i in range(m1):
-        D[i*n1] = i
- 
-    for j in range(n1):
-        D[j] = j
- 
-    cdef int sub_cost, ins_cost, del_cost
-    for j in range(n):
-        for i in range(m):
-            i_j = i*n1 + j
-            i1_j1 = (i+1)*n1 + j+1
-            i1_j = (i+1)*n1 + j
-            i_j1 = i*n1 + j+1
-            if S[i] != T[j]:
-                sub_cost = D[i_j] + 1
-            else:
-                sub_cost = D[i_j]
-            del_cost = D[i_j1] + 1
-            ins_cost = D[i1_j] + 1
-            best = min(min(sub_cost, ins_cost), del_cost)
-            D[i1_j1] = best
-
-
-cdef void fill_i2j(np.ndarray i2j, np.ndarray D) except *:
-    j = D.shape[1]-2
-    cdef int i = D.shape[0]-2
-    while i >= 0:
-        while D[i+1, j] < D[i+1, j+1]:
-            j -= 1
-        if D[i, j+1] < D[i+1, j+1]:
-            i2j[i] = -1
-        else:
-            i2j[i] = j
-            j -= 1
-        i -= 1
-
-cdef void fill_j2i(np.ndarray j2i, np.ndarray D) except *:
-    i = D.shape[0]-2
-    cdef int j = D.shape[1]-2
-    while j >= 0:
-        while D[i, j+1] < D[i+1, j+1]:
-            i -= 1
-        if D[i+1, j] < D[i+1, j+1]:
-            j2i[j] = -1
-        else:
-            j2i[j] = i
-            i -= 1
-        j -= 1
