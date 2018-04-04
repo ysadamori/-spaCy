@@ -71,11 +71,11 @@ cdef weight_t push_cost(StateClass stcls, const GoldParseC* gold, int target) no
             cost += 1
         if BINARY_COSTS and cost >= 1:
             return cost
-    if gold.has_dep[stcls.c.B(0)]:
+    if stcls.c.B(0) >= 0 and gold.has_dep[stcls.c.B(0)]:
         cost += Break.is_valid(stcls.c, 0) and Break.move_cost(stcls, gold) == 0
     # If the token wasn't split before, but gold says it *should* be split,
     # don't push (split instead)
-    if USE_SPLIT and gold.fused[stcls.c.B(0)]:
+    if USE_SPLIT and stcls.c.B(0) >= 0 and gold.fused[stcls.c.B(0)]:
         if not stcls.c.was_split[stcls.c.B(0)%stcls.c.length]:
             cost += 1
     return cost
@@ -189,6 +189,8 @@ cdef class Split:
     cdef weight_t move_cost(StateClass st, const GoldParseC* gold) nogil:
         if not USE_SPLIT:
             return 9000
+        elif st.B(0) < 0:
+            return 9000
         elif gold.fused[st.B(0)]:
             return 0
         else:
@@ -198,7 +200,7 @@ cdef class Split:
     cdef weight_t label_cost(StateClass st, const GoldParseC* gold, attr_t label) nogil:
         if not USE_SPLIT:
             return 9000
-        elif gold.fused[st.B(0)] == 1: #label:
+        elif gold.fused[st.B(0)]: #label:
             return 0
         else:
             return 1
