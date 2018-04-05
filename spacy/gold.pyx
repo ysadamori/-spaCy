@@ -458,16 +458,10 @@ cdef class GoldParse:
                 self.heads[i] = None
                 self.labels[i] = None
                 self.ner[i] = 'O'
-
-        #cycle = nonproj.contains_cycle(self._alignment.flatten(self.heads))
-        #if cycle is not None:
-        #    print(repr(doc.text))
-        #    print([t.text for t in doc])
-        #    print(words)
-        #    print(self.labels)
-        #    print(list(enumerate(self.heads)))
-        #    print(heads)
-        #    raise Exception("Cycle found: %s" % cycle)
+        flat_heads = self._alignment.flatten(self.heads)
+        cycle = nonproj.contains_cycle(flat_heads)
+        if cycle is not None:
+            raise Exception("Cycle found: %s" % cycle)
 
     def __len__(self):
         """Get the number of predicted tokens the annotations have been aligned to.
@@ -500,16 +494,16 @@ cdef class GoldParse:
 
     def align_heads_from_gold(self, gold_heads):
         aligned_heads = self._alignment.to_yours(gold_heads)
-        aligned_heads = [self._alignment.index_to_yours(v) for v in aligned_heads]
         output = []
         for i, value in enumerate(aligned_heads):
+            value = self._alignment.head_to_yours(value)
             if self._alignment.is_subtoken_in_yours(i):
-                # If we're non-fianl subtoken, attach to next subtoken.
+                # If we're non-final subtoken, attach to next subtoken.
                 if self._alignment.is_nonfinal_subtoken_in_yours(i):
                     output.append(i+1)
                 else:
                     # The last subtoken in a region gets the outgoing arc.
-                    output.append(value[0])
+                    output.append(value)
             else:
                 output.append(value)
         return output
@@ -524,6 +518,8 @@ cdef class GoldParse:
             # If we're a subtoken, take the label 'subtok'
             if self._alignment.is_nonfinal_subtoken_in_yours(i):
                 deps[i] = 'subtok'
+            elif isinstance(value, tuple) and isinstance(value[0], list):
+                deps[i] = value[0][-1]
             elif isinstance(value, tuple):
                 deps[i] = value[0]
         return deps

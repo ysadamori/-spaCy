@@ -182,11 +182,29 @@ class Alignment(object):
                     else:
                         output[-1].append((items[entry[0]], entry[1]))
         return output
+    
+    def head_to_yours(self, head_in_theirs):
+        '''Translate a head index that points into their tokens to point into yours'''
+        if head_in_theirs is None:
+            return None
+        elif isinstance(head_in_theirs, tuple):
+            return self.head_to_yours(head_in_theirs[0])
+        elif isinstance(head_in_theirs, list):
+            return [self.head_to_yours(h) for h in head_in_theirs]
+        else:
+            value = self._t2y[head_in_theirs]
+            if isinstance(value, list):
+                return value[-1]
+            else:
+                return value
+
 
     def index_to_yours(self, index):
         '''Translate an index that points into their tokens to point into yours'''
         if index is None:
             return None
+        elif isinstance(index, tuple) and index[0] is None:
+            return index
         elif isinstance(index, tuple):
             return (self._t2y[index[0]], index[1])
         elif isinstance(index, list):
