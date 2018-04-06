@@ -13,7 +13,7 @@ import json
 from ..typedefs cimport hash_t
 from ..strings cimport hash_string
 from .stateclass cimport StateClass
-from ._state cimport StateC
+from ._state cimport StateC, TokenIndexC
 from . import nonproj
 from .transition_system cimport move_cost_func_t, label_cost_func_t
 from ..gold cimport GoldParse, GoldParseC
@@ -59,40 +59,46 @@ MOVE_NAMES[SPLIT] = 'P'
 # Helper functions for the arc-eager oracle
 
 cdef weight_t push_cost(StateClass stcls, const GoldParseC* gold, int target) nogil:
-    if stcls.c.B(0) == -1:
+    if stcls.c.B(0).i == -1:
         return 0
     cdef weight_t cost = 0
-    cdef int i, S_i
-    for i in range(stcls.stack_depth()):
-        S_i = stcls.S(i)
-        if gold.has_dep[target] and gold.heads[target] == S_i:
+    cdef int i, s_i
+    cdef TokenIndexC S_idx
+    for i in range(stcls.c.stack_depth()):
+        S_idx = stcls.c.S(i)
+        s_i = S_idx.j * stcls.c.length + S_idx.i
+        if gold.has_dep[target] and gold.heads[target] == s_i:
             cost += 1
-        if gold.has_dep[S_i] and gold.heads[S_i] == target and (NON_MONOTONIC or not stcls.has_head(S_i)):
+        if gold.has_dep[s_i] and gold.heads[s_i] == target and (NON_MONOTONIC or not stcls.has_head(S_idx)):
             cost += 1
         if BINARY_COSTS and cost >= 1:
             return cost
-    if stcls.c.B(0) >= 0 and gold.has_dep[stcls.c.B(0)]:
+    b0 = stcls.c.B(0).j * stcls.c.length + stcls.c.B(0).i
+    if stcls.c.B(0).i >= 0 and gold.has_dep[b0]:
         cost += Break.is_valid(stcls.c, 0) and Break.move_cost(stcls, gold) == 0
     # If the token wasn't split before, but gold says it *should* be split,
     # don't push (split instead)
-    if USE_SPLIT and stcls.c.B(0) >= 0 and gold.fused[stcls.c.B(0)]:
-        if not stcls.c.was_split[stcls.c.B(0)%stcls.c.length]:
+    if USE_SPLIT and stcls.c.B(0).i >= 0 and gold.fused[b0]:
+        if not stcls.c.was_split(stcls.c.B(0)):
             cost += 1
     return cost
 
 
 cdef weight_t pop_cost(StateClass stcls, const GoldParseC* gold, int target) nogil:
     cdef weight_t cost = 0
-    cdef int i, B_i
+    cdef int i
+    cdef TokenIndexC B_idx
+    cdef int b_i
     # Take into account fused tokens
     cdef int target_token = target % stcls.c.length
     for i in range(stcls.c.segment_length()):
-        B_i = stcls.B(i)
+        B_idx = stcls.c.B(i)
+        b_i = B_idx.j * stcls.c.length + B_idx.i
         if gold.has_dep[target]:
-            cost += gold.heads[target] == B_i
-        if gold.has_dep[B_i]:
-            cost += gold.heads[B_i] == target
-            if gold.heads[B_i] == B_i or (gold.heads[B_i]%stcls.c.length) < target:
+            cost += gold.heads[target] == b_i
+        if gold.has_dep[b_i]:
+            cost += gold.heads[b_i] == target
+            if gold.heads[b_i] == b_i or (gold.heads[b_i]%stcls.c.length) < target:
                 break
         if BINARY_COSTS and cost >= 1:
             return cost
@@ -100,12 +106,16 @@ cdef weight_t pop_cost(StateClass stcls, const GoldParseC* gold, int target) nog
 
 
 cdef weight_t arc_cost(StateClass stcls, const GoldParseC* gold, int head, int child) nogil:
+    cdef TokenIndexC child_idx
+    child_idx.i = child % stcls.c.length
+    child_idx.j = child // stcls.c.length
+    cdef TokenIndexC curr_head = stcls.c.H(child_idx)
     if arc_is_gold(gold, head, child):
         return 0
-    elif stcls.H(child) == gold.heads[child]:
+    elif curr_head.j * stcls.c.length + curr_head.i == gold.heads[child]:
         return 1
     # Head in buffer
-    elif gold.heads[child] >= (stcls.B(0) % stcls.c.length) and stcls.B(1) != 0:
+    elif gold.heads[child] >= (stcls.c.B(0).i) and stcls.c.B(1).i != 0:
         return 1
     else:
         return 0
@@ -140,7 +150,7 @@ cdef class Shift:
     cdef bint is_valid(const StateC* st, attr_t label) nogil:
         if st.buffer_length == 0:
             return 0
-        elif st.shifted[st.B(0)] and st.stack_depth() >= 1:
+        elif st.was_shifted(st.B(0)) and st.stack_depth() >= 1:
             return 0
         elif st.at_break() and st.stack_depth() >= 1:
             return 0
@@ -149,7 +159,8 @@ cdef class Shift:
 
     @staticmethod
     cdef int transition(StateC* st, attr_t label) nogil:
-        st.shifted[st.B(0)] = 1
+        b0 = st.B(0).j * st.length + st.B(0).i
+        st._shifted[b0] = 1
         st.push()
 
     @staticmethod
@@ -158,7 +169,7 @@ cdef class Shift:
 
     @staticmethod
     cdef inline weight_t move_cost(StateClass s, const GoldParseC* gold) nogil:
-        return push_cost(s, gold, s.B(0))
+        return push_cost(s, gold, s.c.B(0).j * s.c.length + s.c.B(0).i)
 
     @staticmethod
     cdef inline weight_t label_cost(StateClass s, const GoldParseC* gold, attr_t label) nogil:
@@ -231,14 +242,18 @@ cdef class Reduce:
 
     @staticmethod
     cdef inline weight_t move_cost(StateClass st, const GoldParseC* gold) nogil:
-        cost = pop_cost(st, gold, st.S(0))
-        if not st.has_head(st.S(0)):
+        s0 = st.c.S(0).j * st.c.length + st.c.S(0).i
+        cost = pop_cost(st, gold, s0)
+        cdef TokenIndexC S_i
+        cdef int si, i
+        if not st.c.has_head(st.c.S(0)):
             # Decrement cost for the arcs we save
-            for i in range(1, st.stack_depth()):
-                S_i = st.S(i)
-                if gold.heads[st.S(0)] == S_i:
+            for i in range(1, st.c.stack_depth()):
+                S_i = st.c.S(i)
+                si = S_i.j * st.c.length + S_i.i
+                if gold.heads[s0] == si:
                     cost -= 1
-                if gold.heads[S_i] == st.S(0):
+                if gold.heads[si] == s0:
                     cost -= 1
         return cost
 
@@ -273,30 +288,33 @@ cdef class LeftArc:
     @staticmethod
     cdef inline weight_t move_cost(StateClass s, const GoldParseC* gold) nogil:
         cdef weight_t cost = 0
+        cdef int b0 = s.c.B(0).j * s.c.length + s.c.B(0).i
+        cdef int s0 = s.c.S(0).j * s.c.length + s.c.S(0).i
         # Try to repair incorrect split move, using the merge (L-subtok) move.
-        if s.c.was_split[s.c.S(0)] \
-        and not gold.fused[s.c.S(0)] \
-        and (s.c.S(0) % s.c.length) == (s.c.B(0) % s.c.length):
+        if s.c.was_split(s.c.S(0)) and not gold.fused[s0] and s.c.S(0).i == s.c.B(0).i:
             return 0
-        if arc_is_gold(gold, s.c.B(0), s.c.S(0)):
+        if arc_is_gold(gold, b0, s0):
             # Have a negative cost if we 'recover' from the wrong dependency
-            return 0 if not s.has_head(s.c.S(0)) else -1
+            return 0 if not s.c.has_head(s.c.S(0)) else -1
         else:
             # Account for deps we might lose between S0 and stack
-            if not s.has_head(s.c.S(0)):
+            if not s.c.has_head(s.c.S(0)):
                 for i in range(1, s.c.stack_depth()):
-                    cost += gold.heads[s.S(i)] == s.S(0)
-                    cost += gold.heads[s.S(0)] == s.S(i)
-            return cost + pop_cost(s, gold, s.S(0)) + arc_cost(s, gold, s.B(0), s.S(0))
+                    si = s.c.S(i).j * s.c.length + s.c.S(i).i
+                    cost += gold.heads[si] == s0
+                    cost += gold.heads[s0] == si
+            return cost + pop_cost(s, gold, s0) + arc_cost(s, gold, b0, s0)
 
     @staticmethod
     cdef inline weight_t label_cost(StateClass s, const GoldParseC* gold, attr_t label) nogil:
+        cdef int b0 = s.c.B(0).j * s.c.length + s.c.B(0).i
+        cdef int s0 = s.c.S(0).j * s.c.length + s.c.S(0).i
         # If we're dealing with an incorrect split, ensure label is SUBTOK.
-        if s.c.was_split[s.S(0)] \
-        and not gold.fused[s.S(0)] \
-        and (s.c.S(0) % s.c.length) == (s.c.B(0) % s.c.length):
+        if s.c.was_split(s.c.S(0)) \
+        and not gold.fused[s0] \
+        and s.c.S(0).i == s.c.B(0).i:
             return 0 if label == SUBTOK_LABEL else 1
-        return arc_is_gold(gold, s.B(0), s.S(0)) and not label_is_gold(gold, s.B(0), s.S(0), label)
+        return arc_is_gold(gold, b0, s0) and not label_is_gold(gold, b0, s0, label)
 
 
 cdef class RightArc:
@@ -309,7 +327,7 @@ cdef class RightArc:
         elif st.at_break():
             return 0
         # If there's (perhaps partial) parse pre-set, don't allow cycle.
-        elif st.H(st.S(0)) == st.B(0):
+        elif st.H(st.S(0)).i == st.B(0).i:
             return 0
         else:
             return 1
@@ -326,20 +344,24 @@ cdef class RightArc:
 
     @staticmethod
     cdef inline weight_t move_cost(StateClass s, const GoldParseC* gold) nogil:
+        cdef int b0 = s.c.B(0).j * s.c.length + s.c.B(0).i
+        cdef int s0 = s.c.S(0).j * s.c.length + s.c.S(0).i
         # If the token wasn't split before, but gold says it *should* be split,
         # don't right-arc (split instead)
-        if USE_SPLIT and not s.c.was_split[s.c.B(0)] and gold.fused[s.c.B(0)]:
-            return gold.fused[s.c.B(0)]
-        elif arc_is_gold(gold, s.S(0), s.B(0)):
+        if USE_SPLIT and not s.c.was_split(s.c.B(0)) and gold.fused[b0]:
+            return gold.fused[b0]
+        elif arc_is_gold(gold, s0, b0):
             return 0
-        elif s.c.shifted[s.B(0)]:
-            return push_cost(s, gold, s.B(0))
+        elif s.c.was_shifted(s.c.B(0)):
+            return push_cost(s, gold, b0)
         else:
-            return push_cost(s, gold, s.B(0)) + arc_cost(s, gold, s.S(0), s.B(0))
+            return push_cost(s, gold, b0) + arc_cost(s, gold, s0, b0)
 
     @staticmethod
     cdef weight_t label_cost(StateClass s, const GoldParseC* gold, attr_t label) nogil:
-        return arc_is_gold(gold, s.S(0), s.B(0)) and not label_is_gold(gold, s.S(0), s.B(0), label)
+        cdef int b0 = s.c.B(0).j * s.c.length + s.c.B(0).i
+        cdef int s0 = s.c.S(0).j * s.c.length + s.c.S(0).i
+        return arc_is_gold(gold, s0, b0) and not label_is_gold(gold, s0, b0, label)
 
 
 cdef class Break:
@@ -371,21 +393,27 @@ cdef class Break:
     @staticmethod
     cdef inline weight_t move_cost(StateClass s, const GoldParseC* gold) nogil:
         cdef weight_t cost = 0
-        cdef int i, j, S_i, B_i
-        for i in range(s.stack_depth()):
-            S_i = s.S(i)
+        cdef int i
+        cdef TokenIndexC S_i, B_i
+        cdef int s0 = s.c.S(0).j * s.c.length + s.c.S(0).i
+        cdef int b0 = s.c.B(0).j * s.c.length + s.c.B(0).i
+        cdef int si, bi
+        for i in range(s.c.stack_depth()):
+            S_i = s.c.S(i)
+            si = S_i.j * s.c.length + S_i.i
             for j in range(s.c.buffer_length):
-                B_i = s.B(j)
-                if not gold.has_dep[S_i]:
-                    cost += gold.heads[S_i] == B_i
-                if gold.has_dep[B_i]:
-                    cost += gold.heads[B_i] == S_i
+                B_i = s.c.B(j)
+                bi = B_i.j * s.c.length + B_i.i
+                if not gold.has_dep[si]:
+                    cost += gold.heads[si] == bi
+                if gold.has_dep[bi]:
+                    cost += gold.heads[bi] == si
                 if cost != 0:
                     return cost
         # Check for sentence boundary --- if it's here, we can't have any deps
         # between stack and buffer, so rest of action is irrelevant.
-        s0_root = _get_root(s.S(0), gold)
-        b0_root = _get_root(s.B(0), gold)
+        s0_root = _get_root(s0, gold)
+        b0_root = _get_root(b0, gold)
         if s0_root != b0_root or s0_root == -1 or b0_root == -1:
             return cost
         else:
@@ -495,15 +523,18 @@ cdef class ArcEager(TransitionSystem):
     def is_gold_parse(self, StateClass state, GoldParse gold):
         predicted = set()
         truth = set()
+        cdef TokenIndexC idx
         for i in range(gold.length):
             gold_i = gold._alignment.index_to_yours(i)
+            idx.i = i
+            idx.j = 0
             if gold_i is None:
                 continue
-            if state.safe_get(i).dep:
-                predicted.add((i, state.H(i),
-                              self.strings[state.safe_get(i).dep]))
+            if state.c.safe_get(idx).dep:
+                predicted.add((i, state.H(idx),
+                              self.strings[state.c.safe_get(idx).dep]))
             else:
-                predicted.add((i, state.H(i), 'ROOT'))
+                predicted.add((i, state.H(idx), 'ROOT'))
             id_, word, tag, head, dep, ner = gold.orig_annot[gold_i]
             truth.add((id_, head, dep))
         return truth == predicted
@@ -603,7 +634,7 @@ cdef class ArcEager(TransitionSystem):
                 prob = probs[i]
                 parse = []
                 for j in range(state.length):
-                    head = state.H(j)
+                    head = state.H(TokenIndexC(i=j, j=0))
                     label = self.strings[state._sent[j].dep]
                     parse.append((head, j, label))
                 parses.append((prob, parse))
@@ -623,7 +654,7 @@ cdef class ArcEager(TransitionSystem):
         for i in range(self.n_moves):
             if self.c[i].move == move and self.c[i].label == label:
                 return self.c[i]
-        return Transition(clas=0, move=MISSING, label=0)
+        return Transition(clas=0, move=MISSING, label=0, score=0.)
 
     def move_name(self, int move, attr_t label):
         label_str = self.strings[label]

@@ -37,13 +37,13 @@ cdef do_func_t[N_MOVES] do_funcs
 
 
 cdef bint _entity_is_sunk(StateClass st, Transition* golds) nogil:
-    if not st.entity_is_open():
+    if not st.c.entity_is_open():
         return False
 
-    cdef const Transition* gold = &golds[st.E(0)]
+    cdef const Transition* gold = &golds[st.c.E(0)]
     if gold.move != BEGIN and gold.move != UNIT:
         return True
-    elif gold.label != st.E_(0).ent_type:
+    elif gold.label != st.c.E_(0).ent_type:
         return True
     else:
         return False
@@ -293,14 +293,14 @@ cdef class Begin:
     @staticmethod
     cdef int transition(StateC* st, attr_t label) nogil:
         st.open_ent(label)
-        st.set_ent_tag(st.B(0), 3, label)
+        st.set_ent_tag(st.B(0).i, 3, label)
         st.push()
         st.pop()
 
     @staticmethod
     cdef weight_t cost(StateClass s, const GoldParseC* gold, attr_t label) nogil:
-        cdef int g_act = gold.ner[s.B(0)].move
-        cdef attr_t g_tag = gold.ner[s.B(0)].label
+        cdef int g_act = gold.ner[s.c.B(0).i].move
+        cdef attr_t g_tag = gold.ner[s.c.B(0).i].label
 
         if g_act == MISSING:
             return 0
@@ -337,16 +337,16 @@ cdef class In:
 
     @staticmethod
     cdef int transition(StateC* st, attr_t label) nogil:
-        st.set_ent_tag(st.B(0), 1, label)
+        st.set_ent_tag(st.B(0).i, 1, label)
         st.push()
         st.pop()
 
     @staticmethod
     cdef weight_t cost(StateClass s, const GoldParseC* gold, attr_t label) nogil:
         move = IN
-        cdef int next_act = gold.ner[s.B(1)].move if s.B(0) < s.c.length else OUT
-        cdef int g_act = gold.ner[s.B(0)].move
-        cdef attr_t g_tag = gold.ner[s.B(0)].label
+        cdef int next_act = gold.ner[s.c.B(1).i].move if s.c.B(0).i < s.c.length else OUT
+        cdef int g_act = gold.ner[s.c.B(0).i].move
+        cdef attr_t g_tag = gold.ner[s.c.B(0).i].label
         cdef bint is_sunk = _entity_is_sunk(s, gold.ner)
 
         if g_act == MISSING:
@@ -385,7 +385,7 @@ cdef class Last:
     @staticmethod
     cdef int transition(StateC* st, attr_t label) nogil:
         st.close_ent()
-        st.set_ent_tag(st.B(0), 1, label)
+        st.set_ent_tag(st.B(0).i, 1, label)
         st.push()
         st.pop()
 
@@ -393,8 +393,8 @@ cdef class Last:
     cdef weight_t cost(StateClass s, const GoldParseC* gold, attr_t label) nogil:
         move = LAST
 
-        cdef int g_act = gold.ner[s.B(0)].move
-        cdef attr_t g_tag = gold.ner[s.B(0)].label
+        cdef int g_act = gold.ner[s.c.B(0).i].move
+        cdef attr_t g_tag = gold.ner[s.c.B(0).i].label
 
         if g_act == MISSING:
             return 0
@@ -438,14 +438,14 @@ cdef class Unit:
     cdef int transition(StateC* st, attr_t label) nogil:
         st.open_ent(label)
         st.close_ent()
-        st.set_ent_tag(st.B(0), 3, label)
+        st.set_ent_tag(st.B(0).i, 3, label)
         st.push()
         st.pop()
 
     @staticmethod
     cdef weight_t cost(StateClass s, const GoldParseC* gold, attr_t label) nogil:
-        cdef int g_act = gold.ner[s.B(0)].move
-        cdef attr_t g_tag = gold.ner[s.B(0)].label
+        cdef int g_act = gold.ner[s.c.B(0).i].move
+        cdef attr_t g_tag = gold.ner[s.c.B(0).i].label
 
         if g_act == MISSING:
             return 0
@@ -475,14 +475,14 @@ cdef class Out:
 
     @staticmethod
     cdef int transition(StateC* st, attr_t label) nogil:
-        st.set_ent_tag(st.B(0), 2, 0)
+        st.set_ent_tag(st.B(0).i, 2, 0)
         st.push()
         st.pop()
 
     @staticmethod
     cdef weight_t cost(StateClass s, const GoldParseC* gold, attr_t label) nogil:
-        cdef int g_act = gold.ner[s.B(0)].move
-        cdef attr_t g_tag = gold.ner[s.B(0)].label
+        cdef int g_act = gold.ner[s.c.B(0).i].move
+        cdef attr_t g_tag = gold.ner[s.c.B(0).i].label
 
         if g_act == ISNT and g_tag == 0:
             return 1
