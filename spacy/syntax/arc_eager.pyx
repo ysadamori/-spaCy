@@ -531,10 +531,10 @@ cdef class ArcEager(TransitionSystem):
             if gold_i is None:
                 continue
             if state.c.safe_get(idx).dep:
-                predicted.add((i, state.H(idx),
+                predicted.add((i, state.c.H(idx).i,
                               self.strings[state.c.safe_get(idx).dep]))
             else:
-                predicted.add((i, state.H(idx), 'ROOT'))
+                predicted.add((i, state.c.H(idx).i, 'ROOT'))
             id_, word, tag, head, dep, ner = gold.orig_annot[gold_i]
             truth.add((id_, head, dep))
         return truth == predicted
