@@ -47,6 +47,7 @@ def get_templates(*args, **kwargs):
 
 
 DEBUG = False
+cdef int DYNAMIC_ORACLE = True
 
 
 def set_debug(val):
@@ -581,6 +582,14 @@ cdef class Parser:
         d_tokvecs = state2vec.ops.allocate((tokvecs.shape[0]+1, tokvecs.shape[1]))
         cdef float loss = 0.
         n_steps = 0
+        cdef Pool mem = Pool()
+        is_valid = <int*>mem.alloc(self.moves.n_moves, sizeof(int))
+        costs = <weight_t*>mem.alloc(self.moves.n_moves, sizeof(weight_t))
+        cdef np.ndarray scores
+        cdef StateClass state
+        cdef int best_i
+        cdef Transition best
+        cdef weight_t* scores_ptr
         while todo:
             states, golds = zip(*todo)
             token_ids = self.get_token_ids(states)
@@ -610,7 +619,20 @@ cdef class Parser:
                 ))
             else:
                 backprops.append((token_ids, d_vector, bp_vector))
-            self.transition_batch(states, scores)
+            if DYNAMIC_ORACLE:
+                self.transition_batch(states, scores)
+            else:
+                assert len(states) == scores.shape[0]
+                assert scores.shape[1] == self.moves.n_moves
+                scores_ptr = <weight_t*>scores.data
+                for i, (state, gold) in enumerate(zip(states, golds)):
+                    memset(is_valid, 0, self.moves.n_moves * sizeof(int))
+                    memset(costs, 0, self.moves.n_moves * sizeof(weight_t))
+                    self.moves.set_costs(is_valid, costs, state, gold)
+                    best_i = arg_max_if_gold(&scores_ptr[i*self.moves.n_moves], costs, is_valid, self.moves.n_moves)
+                    best = self.moves.c[best_i]
+                    best.do(state.c, best.label)
+                    state.c.push_hist(best_i)
             todo = [(st, gold) for (st, gold) in todo
                     if not st.is_final()]
             if losses is not None:
@@ -692,7 +714,7 @@ cdef class Parser:
             while start < len(doc):
                 state = state.copy()
                 n_moves = 0
-                while state.B(0) < start and not state.is_final():
+                while state.c.B(0).i < start and not state.is_final():
                     action = self.moves.c[oracle_actions.pop(0)]
                     action.do(state.c, action.label)
                     state.c.push_hist(action.clas)
