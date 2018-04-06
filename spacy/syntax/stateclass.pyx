@@ -25,10 +25,10 @@ cdef class StateClass:
         return self.c.length
 
     def get_B(self, int i):
-        return self.c.B(i)
+        return self.c.B(i).j * self.c.length + self.c.B(i).i
     
     def get_S(self, int i):
-        return self.c.S(i)
+        return self.c.S(i).j * self.c.length + self.c.S(i).i
 
     def can_push(self):
         return self.c.can_push()
@@ -70,11 +70,11 @@ cdef class StateClass:
 
     @property
     def stack(self):
-        return [self.S(i) for i in range(self.c._s_i)]
+        return [self.get_S(i) for i in range(self.c._s_i)]
 
     @property
     def queue(self):
-        return [self.B(i) for i in range(self.c.buffer_length)]
+        return [self.get_B(i) for i in range(self.c.buffer_length)]
 
     @property
     def token_vector_lenth(self):
