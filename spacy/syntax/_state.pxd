@@ -230,7 +230,7 @@ cdef cppclass StateC:
         output.i = -1
         output.j = 0
         if i >= this._s_i:
-            output
+            return output
         return this._stack[this._s_i - (i+1)]
 
     TokenIndexC B(int i) nogil const:
