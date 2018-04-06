@@ -266,7 +266,7 @@ cdef cppclass StateC:
         return this.safe_get(this.R(i, child_num))
 
     const TokenC* safe_get(TokenIndexC index) nogil const:
-        if index.i < 0 or index.i:
+        if index.i < 0 or index.i >= this.length:
             return &this._empty_token
         else:
             i = index.j * this.length + index.i 
@@ -567,8 +567,8 @@ cdef cppclass StateC:
         cdef int length_with_split = this.length * this.max_split
         this.buffer_length = src.buffer_length
         memcpy(this._sent, src._sent, length_with_split * sizeof(TokenC))
-        memcpy(this._stack, src._stack, length_with_split * sizeof(int))
-        memcpy(this._buffer, src._buffer, length_with_split * sizeof(int))
+        memcpy(this._stack, src._stack, length_with_split * sizeof(this._stack[0]))
+        memcpy(this._buffer, src._buffer, length_with_split * sizeof(this._buffer[0]))
         memcpy(this._ents, src._ents, length_with_split * sizeof(Entity))
         memcpy(this._shifted, src._shifted, length_with_split * sizeof(this._shifted[0]))
         memcpy(this._was_split, src._was_split, length_with_split * sizeof(this._was_split[0]))
