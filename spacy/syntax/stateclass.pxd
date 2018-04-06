@@ -7,7 +7,7 @@ from ..structs cimport TokenC, Entity
 from ..typedefs cimport attr_t
 
 from ..vocab cimport EMPTY_LEXEME
-from ._state cimport StateC
+from ._state cimport StateC, TokenIndexC
 
 
 @cython.final
@@ -39,10 +39,10 @@ cdef class StateClass:
         self.c.offset = offset
         return self
 
-    cdef inline int S(self, int i) nogil:
+    cdef inline TokenIndexC S(self, int i) nogil:
         return self.c.S(i)
 
-    cdef inline int B(self, int i) nogil:
+    cdef inline TokenIndexC B(self, int i) nogil:
         return self.c.B(i)
 
     cdef inline const TokenC* S_(self, int i) nogil:
@@ -51,31 +51,31 @@ cdef class StateClass:
     cdef inline const TokenC* B_(self, int i) nogil:
         return self.c.B_(i)
 
-    cdef inline const TokenC* H_(self, int i) nogil:
+    cdef inline const TokenC* H_(self, TokenIndexC i) nogil:
         return self.c.H_(i)
 
     cdef inline const TokenC* E_(self, int i) nogil:
         return self.c.E_(i)
 
-    cdef inline const TokenC* L_(self, int i, int idx) nogil:
+    cdef inline const TokenC* L_(self, TokenIndexC i, int idx) nogil:
         return self.c.L_(i, idx)
 
-    cdef inline const TokenC* R_(self, int i, int idx) nogil:
+    cdef inline const TokenC* R_(self, TokenIndexC i, int idx) nogil:
         return self.c.R_(i, idx)
 
-    cdef inline const TokenC* safe_get(self, int i) nogil:
+    cdef inline const TokenC* safe_get(self, TokenIndexC i) nogil:
         return self.c.safe_get(i)
 
-    cdef inline int H(self, int i) nogil:
+    cdef inline TokenIndexC H(self, TokenIndexC i) nogil:
         return self.c.H(i)
     
     cdef inline int E(self, int i) nogil:
         return self.c.E(i)
 
-    cdef inline int L(self, int i, int idx) nogil:
+    cdef inline TokenIndexC L(self, TokenIndexC i, int idx) nogil:
         return self.c.L(i, idx)
 
-    cdef inline int R(self, int i, int idx) nogil:
+    cdef inline TokenIndexC R(self, TokenIndexC i, int idx) nogil:
         return self.c.R(i, idx)
 
     cdef inline bint empty(self) nogil:
@@ -87,13 +87,13 @@ cdef class StateClass:
     cdef inline bint at_break(self) nogil:
         return self.c.at_break()
 
-    cdef inline bint has_head(self, int i) nogil:
+    cdef inline bint has_head(self, TokenIndexC i) nogil:
         return self.c.has_head(i)
 
-    cdef inline int n_L(self, int i) nogil:
+    cdef inline int n_L(self, TokenIndexC i) nogil:
         return self.c.n_L(i)
 
-    cdef inline int n_R(self, int i) nogil:
+    cdef inline int n_R(self, TokenIndexC i) nogil:
         return self.c.n_R(i)
 
     cdef inline bint stack_is_connected(self) nogil:
@@ -117,10 +117,10 @@ cdef class StateClass:
     cdef inline void unshift(self) nogil:
         self.c.unshift()
 
-    cdef inline void add_arc(self, int head, int child, attr_t label) nogil:
+    cdef inline void add_arc(self, TokenIndexC head, TokenIndexC child, attr_t label) nogil:
         self.c.add_arc(head, child, label)
 
-    cdef inline void del_arc(self, int head, int child) nogil:
+    cdef inline void del_arc(self, TokenIndexC head, TokenIndexC child) nogil:
         self.c.del_arc(head, child)
 
     cdef inline void open_ent(self, attr_t label) nogil:
