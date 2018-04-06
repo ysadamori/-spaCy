@@ -183,7 +183,7 @@ cdef class Split:
             return 0
         elif st.buffer_length == 0:
             return 0
-        elif st.was_split[st.B(0)]:
+        elif st.was_split(st.B(0)):
             return 0
         else:
             return 1
@@ -200,9 +200,9 @@ cdef class Split:
     cdef weight_t move_cost(StateClass st, const GoldParseC* gold) nogil:
         if not USE_SPLIT:
             return 9000
-        elif st.B(0) < 0:
+        elif st.c.B(0).i < 0:
             return 9000
-        elif gold.fused[st.B(0)]:
+        elif gold.fused[st.c.B(0).i]:
             return 0
         else:
             return 1
@@ -211,7 +211,7 @@ cdef class Split:
     cdef weight_t label_cost(StateClass st, const GoldParseC* gold, attr_t label) nogil:
         if not USE_SPLIT:
             return 9000
-        elif gold.fused[st.B(0)]: #label:
+        elif gold.fused[st.c.B(0).i]:
             return 0
         else:
             return 1
@@ -327,7 +327,7 @@ cdef class RightArc:
         elif st.at_break():
             return 0
         # If there's (perhaps partial) parse pre-set, don't allow cycle.
-        elif st.H(st.S(0)).i == st.B(0).i:
+        elif st.has_head(st.S(0)) and st.H(st.S(0)).i == st.B(0).i:
             return 0
         else:
             return 1
@@ -809,7 +809,7 @@ cdef class ArcEager(TransitionSystem):
                     "Could not find a gold-standard action to supervise the"
                     "dependency parser. The GoldParse was projective. The "
                     "transition system has %d actions. State at failure: %s"
-                    % (self.n_moves, stcls.print_state(gold.words)))
+                    % (self.n_moves, stcls.print_state(map(repr, gold.words))))
         assert n_gold >= 1
 
     def get_beam_annot(self, Beam beam):
