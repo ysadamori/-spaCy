@@ -23,7 +23,7 @@ def parser(vocab):
     parser.add_label('left')
     parser.begin_training([], **parser.cfg)
     sgd = Adam(NumpyOps(), 0.001)
-
+    sgd.ops.xp.random.seed(0)
     for i in range(10):
         losses = {}
         doc = Doc(vocab, words=['a', 'b', 'c', 'd'])
