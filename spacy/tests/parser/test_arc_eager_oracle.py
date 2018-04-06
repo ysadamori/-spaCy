@@ -265,6 +265,28 @@ def test_oracle_oversegment_undersegment(arc_eager, vocab):
     assert gold.labels == ['subtok', 'dep', ['dep', 'ROOT'], 'dep']
 
 
+def test_root_in_undersegment(arc_eager, vocab):
+    words = ['ab', 'c', 'd']
+    gold_words = ['a', 'b', 'c', 'd']
+    heads = [0, 0, 0, 0]
+    deps = ['ROOT', 'dep', 'dep', 'dep']
+    doc = Doc(vocab, words=words)
+    gold = GoldParse(doc, words=gold_words, heads=heads, deps=deps)
+    assert gold.heads == [[(0, 0), (0, 0)], (0, 0), (0, 0)]
+    assert gold.labels == [['ROOT', 'dep'], 'dep', 'dep']
+    M = arc_eager
+    M.preprocess_gold(gold)
+    state = StateClass(doc)
+    assert M.get_cost(state, gold, 'P-1') == 0 
+    print(state.print_state(words))
+    M.transition(state, 'P-1')
+    print(state.print_state(words))
+    assert M.get_cost(state, gold, 0) == 0 
+    M.transition(state, 'S')
+    print(state.print_state(words))
+    assert M.get_cost(state, gold, 'R-dep') == 0 
+
+
 annot_tuples = [
     (0, 'When', 'WRB', 11, 'advmod', 'O'),
     (1, 'Walter', 'NNP', 2, 'compound', 'B-PERSON'),
