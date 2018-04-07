@@ -183,6 +183,10 @@ def write_conllu(docs, file_):
         offsets = [(span.start_char, span.end_char) for span in spans]
         for start_char, end_char in offsets:
             doc.merge(start_char, end_char)
+        # TODO: This shuldn't be necessary? Should be handled in merge
+        for word in doc:
+            if word.i == word.head.i:
+                word.dep_ = 'ROOT'
         file_.write("# newdoc id = {i}\n".format(i=i))
         for j, sent in enumerate(doc.sents):
             file_.write("# sent_id = {i}.{j}\n".format(i=i, j=j))
@@ -197,6 +201,8 @@ def write_conllu(docs, file_):
                 print("Rootless sentence!")
                 print(sent)
                 print(i)
+                for w in sent:
+                    print(w.i, w.text, w.head.text, w.head.i, w.dep_)
                 raise ValueError
 
 
@@ -241,12 +247,57 @@ def get_token_conllu(token, i):
         head = 0
     else:
         head = i + (token.head.i - token.i) + 1
-    fields = [str(i+1), token.text, token.lemma_, token.pos_, token.tag_, '_',
+    split_start = token._.split_start
+    if split_start is not None:
+        split_end = token._.split_end
+        split_len = split_end.i - split_start.i
+        n_in_split = token.i - split_start.i
+        text_len = len(split_start.text)
+        assert text_len > split_len
+        if n_in_split == 0:
+            text = token.text[:text_len - split_len]
+            print("Split start", text, token.text, text_len, split_len)
+        else:
+            start = (text_len - split_len) + (n_in_split-1)
+            end = start + 1
+            text = split_start.text[start : end]
+            print("Split", n_in_split, text, token.text)
+    else:
+        text = token.text
+
+    fields = [str(i+1), text, token.lemma_, token.pos_, token.tag_, '_',
               str(head), token.dep_.lower(), '_', '_']
     lines.append('\t'.join(fields))
     return '\n'.join(lines)
 
+
+def get_token_split_start(token):
+    if token.text == '':
+        assert token.i != 0
+        i = -1
+        while token.nbor(i).text == '':
+            i -= 1
+        return token.nbor(i)
+    elif (token.i+1) < len(token.doc) and token.nbor(1).text == '':
+        return token
+    else:
+        return None
+
+
+def get_token_split_end(token):
+    if (token.i+1) == len(token.doc):
+        return token if token.text == '' else None
+    elif token.text != '' and token.nbor(1).text != '':
+        return None
+    i = 1
+    while (token.i+i) < len(token.doc) and token.nbor(i).text == '':
+        i += 1
+    return token.nbor(i-1)
+ 
+
 Token.set_extension('get_conllu_lines', method=get_token_conllu)
+Token.set_extension('split_start', getter=get_token_split_start)
+Token.set_extension('split_end', getter=get_token_split_end)
 Token.set_extension('begins_fused', default=False)
 Token.set_extension('inside_fused', default=False)
 
