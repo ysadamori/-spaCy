@@ -38,11 +38,11 @@ class JapaneseTokenizer(object):
 class JapaneseCharacterSegmenter(object):
     def __init__(self, vocab):
         self.vocab = vocab
+        self.tokenizer = Tokenizer(vocab)
 
     def __call__(self, text):
         words = []
         spaces = []
-        doc = self.tokenizer(text)
         for token in self.tokenizer(text):
             words.extend(list(token.text))
             spaces.extend([False]*len(token.text))
@@ -60,7 +60,7 @@ class JapaneseDefaults(Language.Defaults):
         if cls.use_janome:
             return JapaneseTokenizer(cls, nlp)
         else:
-            return JapaneseCharacterSegmenter(cls, nlp.vocab)
+            return JapaneseCharacterSegmenter(nlp.vocab)
 
 
 class Japanese(Language):
