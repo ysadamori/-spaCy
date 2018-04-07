@@ -212,12 +212,23 @@ def print_progress(itn, losses, ud_scores):
     fields = {
         'dep_loss': losses.get('parser', 0.0),
         'tag_loss': losses.get('tagger', 0.0),
-        'words': ud_scores['Words'].f1 * 100,
-        'sents': ud_scores['Sentences'].f1 * 100,
-        'tags': ud_scores['XPOS'].f1 * 100,
-        'uas': ud_scores['UAS'].f1 * 100,
-        'las': ud_scores['LAS'].f1 * 100,
     }
+    if ud_scores is not None:
+        fields.update({
+            'words': ud_scores['Words'].f1 * 100,
+            'sents': ud_scores['Sentences'].f1 * 100,
+            'tags': ud_scores['XPOS'].f1 * 100,
+            'uas': ud_scores['UAS'].f1 * 100,
+            'las': ud_scores['LAS'].f1 * 100,
+        })
+    else:
+        fields.update({
+            'words': 0.0,
+            'sents': 0.0,
+            'tags': 0.0,
+            'uas': 0.0,
+            'las': 0.0
+        })
     header = ['Epoch', 'Loss', 'LAS', 'UAS', 'TAG', 'SENT', 'WORD']
     if itn == 0:
         print('\t'.join(header))
@@ -429,9 +440,15 @@ def main(ud_dir, parses_dir, config, corpus, limit=0, use_gpu=-1):
         
         out_path = parses_dir / corpus / 'epoch-{i}.conllu'.format(i=i)
         with nlp.use_params(optimizer.averages):
-            parsed_docs, scores = evaluate(nlp, paths.dev.text, paths.dev.conllu, out_path)
+            try:
+                parsed_docs, scores = evaluate(nlp, paths.dev.text, paths.dev.conllu, out_path)
+            except RecursionError:
+                scores = None
+                parsed_docs = None
+
             print_progress(i, losses, scores)
-            _render_parses(i, parsed_docs[:50]) 
+            if parsed_docs is not None:
+                _render_parses(i, parsed_docs[:50]) 
 
 
 def _render_parses(i, to_render):
