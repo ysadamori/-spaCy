@@ -14,6 +14,7 @@ cdef struct GoldParseC:
     int** brackets
     int* fused
     Transition* ner
+    int _size
 
 
 cdef class GoldParse:

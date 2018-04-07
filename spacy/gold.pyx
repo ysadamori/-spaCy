@@ -417,6 +417,7 @@ cdef class GoldParse:
         self.length = len(doc)
 
         # These are filled by the tagger/parser/entity recogniser
+        self.c._size = len(doc)
         self.c.tags = <int*>self.mem.alloc(len(doc), sizeof(int))
         self.c.heads = <int*>self.mem.alloc(len(doc), sizeof(int))
         self.c.labels = <attr_t*>self.mem.alloc(len(doc), sizeof(attr_t))
@@ -529,6 +530,8 @@ cdef class GoldParse:
 
     def resize_arrays(self, int new_size):
         # These are filled by the tagger/parser/entity recogniser
+        if new_size <= self.c._size:
+            return
         self.c.tags = <int*>self.mem.realloc(self.c.tags, new_size * sizeof(int))
         self.c.heads = <int*>self.mem.realloc(self.c.heads, new_size * sizeof(int))
         self.c.labels = <attr_t*>self.mem.realloc(self.c.labels, new_size * sizeof(attr_t))
@@ -536,6 +539,7 @@ cdef class GoldParse:
         self.c.sent_start = <int*>self.mem.realloc(self.c.sent_start, new_size * sizeof(int))
         self.c.ner = <Transition*>self.mem.realloc(self.c.ner, new_size * sizeof(Transition))
         self.c.fused = <int*>self.mem.realloc(self.c.fused, new_size * sizeof(int))
+        self.c._size = new_size
 
     @property
     def is_projective(self):
