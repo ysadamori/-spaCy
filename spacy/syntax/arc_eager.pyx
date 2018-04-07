@@ -727,9 +727,6 @@ cdef class ArcEager(TransitionSystem):
 
     cdef int finalize_state(self, StateC* st) nogil:
         cdef int i, j
-        for i in range(st.length):
-            if st._sent[i].head == 0:
-                st._sent[i].dep = self.root_label
         # Resolve split tokens back into the sentence
         # First we gather a list of the indices into the state._sent array,
         # in the order they should occur.
@@ -757,6 +754,9 @@ cdef class ArcEager(TransitionSystem):
             old_head = prev_idx + old[prev_idx].head
             st._sent[i].head = old2new[old_head] - i
         st.length = indices.size()
+        for i in range(st.length):
+            if st._sent[i].head == 0:
+                st._sent[i].dep = self.root_label
         free(old)
 
     def finalize_doc(self, doc):
