@@ -77,13 +77,12 @@ cdef weight_t push_cost(StateClass stcls, const GoldParseC* gold, int target) no
         if BINARY_COSTS and cost >= 1:
             return cost
     b0 = stcls.c.B(0).j * stcls.c.length + stcls.c.B(0).i
-    if stcls.c.B(0).i >= 0 and gold.has_dep[b0]:
-        cost += Break.is_valid(stcls.c, 0) and Break.move_cost(stcls, gold) == 0
+    if stcls.c.B(0).i >= 0 and gold.has_dep[b0] and Break.is_valid(stcls.c, 0):
+        cost += Break.move_cost(stcls, gold) == 0
     # If the token wasn't split before, but gold says it *should* be split,
     # don't push (split instead)
-    if USE_SPLIT and stcls.c.B(0).i >= 0 and gold.fused[b0]:
-        if not stcls.c.was_split(stcls.c.B(0)):
-            cost += 1
+    if Split.is_valid(stcls.c, 0):
+        cost += Split.move_cost(stcls, gold) == 0
     return cost
 
 
@@ -153,9 +152,11 @@ cdef class Shift:
     cdef bint is_valid(const StateC* st, attr_t label) nogil:
         if st.buffer_length == 0:
             return 0
-        elif st.was_shifted(st.B(0)) and st.stack_depth() >= 1:
+        elif st.stack_depth() == 0:
+            return 1
+        elif st.was_shifted(st.B(0)):
             return 0
-        elif st.at_break() and st.stack_depth() >= 1:
+        elif st.at_break():
             return 0
         else:
             return 1
@@ -188,8 +189,8 @@ cdef class Split:
             return 0
         elif st.was_split(st.B(0)):
             return 0
-        elif st.B_(0).lex.length == 1:
-            return 0
+        #elif st.B_(0).lex.length == 1:
+        #    return 0
         else:
             return 1
 
@@ -379,9 +380,13 @@ cdef class Break:
         cdef int i
         if not USE_BREAK:
             return 0
+        elif st.buffer_length == 0:
+            return 0
         elif st.stack_depth() < 1:
             return 0
         elif st._sent[st.B_(0).l_edge].sent_start == -1:
+            return 0
+        elif st.B(0).j != 0:
             return 0
         else:
             return 1
@@ -756,6 +761,18 @@ cdef class ArcEager(TransitionSystem):
 
     def finalize_doc(self, doc):
         doc.is_parsed = True
+        for sent in doc.sents:
+            for word in sent:
+                if word.head.i == word.i and word.dep_ == 'ROOT':
+                    break
+            else:
+                print("Rootless sentence!")
+                print(sent)
+                for w in sent:
+                    print(w.i, w.text, w.head.text, w.head.i, w.dep_)
+                raise ValueError
+
+
 
     cdef int set_valid(self, int* output, const StateC* st) nogil:
         cdef bint[N_MOVES] is_valid
@@ -840,6 +857,9 @@ cdef class ArcEager(TransitionSystem):
                 print(gold.heads)
                 print(gold.labels)
                 print(gold.sent_starts)
+                print(stcls.c.stack_depth(), stcls.stack, stcls.queue)
+                print(stcls.c.B(0).i, stcls.c.B(0).j)
+                print(stcls.c.S(0).i, stcls.c.S(0).j)
                 print(stcls.history)
                 raise ValueError(
                     "Could not find a gold-standard action to supervise the"
