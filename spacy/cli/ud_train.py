@@ -72,7 +72,7 @@ def read_data(nlp, conllu_file, text_file, raw_text=True, oracle_segments=False,
                 sent['tags'].append(tag)
                 sent['heads'].append(head)
                 sent['deps'].append('ROOT' if dep == 'root' else dep)
-                sent['spaces'].append(space_after == '_')
+                sent['spaces'].append(space_after != 'SpaceAfter=No')
             sent['entities'] = ['-'] * len(sent['words'])
             sent['heads'], sent['deps'] = projectivize(sent['heads'],
                                                        sent['deps'])
