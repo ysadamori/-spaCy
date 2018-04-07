@@ -31,6 +31,7 @@ from .. import lang
 from .. import lang
 from ..lang import zh
 from ..lang import ja
+from ..lang import ru
 
 
 ################
@@ -393,6 +394,7 @@ def main(ud_dir, parses_dir, config, corpus, limit=0, use_gpu=-1):
     spacy.util.fix_random_seed()
     lang.zh.Chinese.Defaults.use_jieba = False
     lang.ja.Japanese.Defaults.use_janome = False
+    lang.ru.Russian.Defaults.use_pymorphy2 = False
 
     config = Config.load(config)
     paths = TreebankPaths(ud_dir, corpus)
