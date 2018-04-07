@@ -198,7 +198,6 @@ class Alignment(object):
             else:
                 return value
 
-
     def index_to_yours(self, index):
         '''Translate an index that points into their tokens to point into yours'''
         if index is None:
@@ -261,6 +260,8 @@ class Alignment(object):
         '''
         if cand_words == gold_words:
             return 0, list(range(len(cand_words))), list(range(len(cand_words)))
+        cand_words = [w.replace(' ', '') for w in cand_words]
+        gold_words = [w.replace(' ', '') for w in gold_words]
         cand2gold, gold2cand = rethink_alignment(cand_words, gold_words)
         return 1, cand2gold, gold2cand
 
