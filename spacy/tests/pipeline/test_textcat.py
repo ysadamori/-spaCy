@@ -9,6 +9,7 @@ def test_simple_train():
     nlp.add_pipe(nlp.create_pipe('textcat'))
     nlp.get_pipe('textcat').add_label('answer')
     nlp.begin_training()
+    nlp._optimizer.xp.random.seed(0)
     for i in range(5):
         for text, answer in [('aaaa', 1.), ('bbbb', 0), ('aa', 1.),
                             ('bbbbbbbbb', 0.), ('aaaaaa', 1)]:
