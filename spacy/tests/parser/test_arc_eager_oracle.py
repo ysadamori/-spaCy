@@ -282,13 +282,37 @@ def test_root_in_undersegment(arc_eager, vocab):
     M.preprocess_gold(gold)
     state = StateClass(doc)
     assert M.get_cost(state, gold, 'P-1') == 0 
-    print(state.print_state(words))
     M.transition(state, 'P-1')
-    print(state.print_state(words))
     assert M.get_cost(state, gold, 0) == 0 
     M.transition(state, 'S')
-    print(state.print_state(words))
     assert M.get_cost(state, gold, 'R-dep') == 0 
+
+
+def test_single_word_sentence_at_end(arc_eager, vocab):
+    words = ['a', 'b', 'c', 'd']
+    gold_words = ['a', 'b', 'c', 'd']
+    heads = [0, 0, 0, 3]
+    deps = ['ROOT', 'dep', 'dep', 'ROOT']
+    doc = Doc(vocab, words=words)
+    gold = GoldParse(doc, words=gold_words, heads=heads, deps=deps)
+    M = arc_eager
+    M.preprocess_gold(gold)
+    state = StateClass(doc)
+    assert M.get_cost(state, gold, 'S') == 0 
+    M.transition(state, 'S')
+    assert M.get_cost(state, gold, 'R-dep') == 0 
+    M.transition(state, 'R-dep')
+    M.transition(state, 'D')
+    assert M.get_cost(state, gold, 'R-dep') == 0 
+    M.transition(state, 'R-dep')
+    assert M.get_cost(state, gold, 'B-ROOT') == 0 
+    assert M.get_cost(state, gold, 'D') == 0 
+    M.transition(state, 'D')
+    M.transition(state, 'B-ROOT')
+    assert M.get_cost(state, gold, 'S') == 0 
+    M.transition(state, 'S')
+    assert state.is_final()
+
 
 
 annot_tuples = [
