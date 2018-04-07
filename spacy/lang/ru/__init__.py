@@ -24,11 +24,17 @@ class RussianDefaults(Language.Defaults):
     tokenizer_exceptions = update_exc(BASE_EXCEPTIONS, TOKENIZER_EXCEPTIONS)
     stop_words = STOP_WORDS
     tag_map = TAG_MAP
+    use_pymorphy2 = True
 
     @classmethod
     def create_lemmatizer(cls, nlp=None):
-        return RussianLemmatizer()
+        if cls.use_pymorphy2:
+            return RussianLemmatizer()
+        else:
+            return null_lemmatizer
 
+def null_lemmatizer(string, *args, **kwargs):
+    return [string]
 
 class Russian(Language):
     lang = 'ru'
