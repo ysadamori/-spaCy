@@ -189,8 +189,8 @@ cdef class Split:
             return 0
         elif st.was_split(st.B(0)):
             return 0
-        #elif st.B_(0).lex.length == 1:
-        #    return 0
+        elif st.B_(0).lex.length == 1:
+            return 0
         else:
             return 1
 
