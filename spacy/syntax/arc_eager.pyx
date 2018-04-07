@@ -9,6 +9,9 @@ from cymem.cymem cimport Pool
 from collections import OrderedDict, defaultdict, Counter
 from thinc.extra.search cimport Beam
 import json
+from libcpp.vector cimport vector
+from libc.stdlib cimport calloc, free
+from libc.string cimport memcpy
 
 from ..typedefs cimport hash_t
 from ..strings cimport hash_string
@@ -714,11 +717,42 @@ cdef class ArcEager(TransitionSystem):
                 st._sent[i].l_kids = 0
                 st._sent[i].r_kids = 0
 
+    def _py_finalize_state(self, StateClass state):
+        self.finalize_state(state.c)
+
     cdef int finalize_state(self, StateC* st) nogil:
-        cdef int i
+        cdef int i, j
         for i in range(st.length):
             if st._sent[i].head == 0:
                 st._sent[i].dep = self.root_label
+        # Resolve split tokens back into the sentence
+        # First we gather a list of the indices into the state._sent array,
+        # in the order they should occur.
+        cdef vector[int] indices
+        cdef vector[int] old2new
+        # Make an index map so we can fix heads
+        old2new.resize(st.length * MAX_SPLIT)
+        for i in range(st.length):
+            old2new[i] = indices.size()
+            indices.push_back(i)
+            for j in range(1, st._was_split[i]+1):
+                old2new[j*st.length + i] = indices.size()
+                indices.push_back(j*st.length+i)
+        # Now make a copy of the array, so we can set the correct order into
+        # st._sent
+        old = <TokenC*>calloc(st.length * MAX_SPLIT, sizeof(TokenC))
+        memcpy(old, st._sent, st.length * MAX_SPLIT * sizeof(TokenC))
+        # Now set the array.
+        cdef int prev_idx, old_head
+        for i in range(indices.size()):
+            prev_idx = indices[i]
+            st._sent[i] = old[prev_idx]
+            if prev_idx >= st.length:
+                st._sent[i].lex = st._empty_token.lex
+            old_head = prev_idx + old[prev_idx].head
+            st._sent[i].head = old2new[old_head] - i
+        st.length = indices.size()
+        free(old)
 
     def finalize_doc(self, doc):
         doc.is_parsed = True
