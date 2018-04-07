@@ -255,6 +255,8 @@ def test_oracle_nongold_split(arc_eager, vocab):
 
 
 def test_oracle_oversegment_undersegment(arc_eager, vocab):
+    if arc_eager.max_split == 0:
+        return
     words = ['a', 'b', 'cd', 'e'] 
     gold_words = ['ab', 'c', 'd', 'e']
     heads = [1, 2, 2, 2]
@@ -266,6 +268,8 @@ def test_oracle_oversegment_undersegment(arc_eager, vocab):
 
 
 def test_root_in_undersegment(arc_eager, vocab):
+    if arc_eager.max_split == 0:
+        return
     words = ['ab', 'c', 'd']
     gold_words = ['a', 'b', 'c', 'd']
     heads = [0, 0, 0, 0]
