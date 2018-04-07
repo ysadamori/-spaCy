@@ -619,20 +619,7 @@ cdef class Parser:
                 ))
             else:
                 backprops.append((token_ids, d_vector, bp_vector))
-            if DYNAMIC_ORACLE:
-                self.transition_batch(states, scores)
-            else:
-                assert len(states) == scores.shape[0]
-                assert scores.shape[1] == self.moves.n_moves
-                scores_ptr = <weight_t*>scores.data
-                for i, (state, gold) in enumerate(zip(states, golds)):
-                    memset(is_valid, 0, self.moves.n_moves * sizeof(int))
-                    memset(costs, 0, self.moves.n_moves * sizeof(weight_t))
-                    self.moves.set_costs(is_valid, costs, state, gold)
-                    best_i = arg_max_if_gold(&scores_ptr[i*self.moves.n_moves], costs, is_valid, self.moves.n_moves)
-                    best = self.moves.c[best_i]
-                    best.do(state.c, best.label)
-                    state.c.push_hist(best_i)
+            self.transition_batch(states, scores)
             todo = [(st, gold) for (st, gold) in todo
                     if not st.is_final()]
             if losses is not None:
@@ -808,15 +795,18 @@ cdef class Parser:
         cdef StateClass state
         cdef Doc doc
         for i, (state, doc) in enumerate(zip(states, docs)):
+            # TODO
+            # The doc may change size, so the tensor stuff is sort of broken.
+            # What to do?
+            doc.tensor = None
+            # Arrange the split tokens back into a single contiguous sentence
+            # Fix up heads as necessary
             self.moves.finalize_state(state.c)
-            for j in range(doc.length):
-                doc.c[j] = state.c._sent[j]
-            if tensors is not None:
-                if isinstance(doc.tensor, numpy.ndarray) \
-                and not isinstance(tensors[i], numpy.ndarray):
-                    doc.extend_tensor(tensors[i].get())
-                else:
-                    doc.extend_tensor(tensors[i])
+            # We might be making the doc longer than it was, so tell the doc
+            # to reset, and use push to put the tokens back on.
+            doc.length = 0
+            for j in range(state.c.length):
+                doc.push_back(&state.c._sent[j], state.c._sent[j].spacy)
             self.moves.finalize_doc(doc)
 
             for hook in self.postprocesses:
