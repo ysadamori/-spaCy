@@ -61,11 +61,22 @@ def read_data(nlp, conllu_file, text_file, raw_text=True, oracle_segments=False,
         sent_annots = []
         for cs in cd:
             sent = defaultdict(list)
+            fused_ids = set()
             for id_, word, lemma, pos, tag, morph, head, dep, _, space_after in cs:
                 if '.' in id_:
                     continue
                 if '-' in id_:
+                    fuse_start, fuse_end = id_.split('-')
+                    for sub_id in range(int(fuse_start), int(fuse_end)+1):
+                        fused_ids.add(str(sub_id))
+                    sent['tokens'].append(word)
                     continue
+                if id_ not in fused_ids:
+                    sent['tokens'].append(word)
+                    if space_after == '_':
+                        sent['tokens'][-1] += ' '
+                elif id_ == fuse_end and space_after != 'SpaceAfter=No':
+                    sent['tokens'][-1] += ' '
                 id_ = int(id_)-1
                 head = int(head)-1 if head != '0' else id_
                 sent['words'].append(word)
@@ -130,14 +141,15 @@ def _make_gold(nlp, text, sent_annots):
     flat = defaultdict(list)
     for sent in sent_annots:
         flat['heads'].extend(len(flat['words'])+head for head in sent['heads'])
-        for field in ['words', 'tags', 'deps', 'entities', 'spaces']:
+        for field in ['words', 'tags', 'deps', 'entities', 'spaces', 'tokens']:
             flat[field].extend(sent[field])
     # Construct text if necessary
     assert len(flat['words']) == len(flat['spaces'])
     if text is None:
-        text = ''.join(word+' '*space for word, space in zip(flat['words'], flat['spaces'])) 
+        text = ''.join(flat['tokens'])
     doc = nlp.make_doc(text)
     flat.pop('spaces')
+    flat.pop('tokens')
     gold = GoldParse(doc, **flat)
     return doc, gold
 
@@ -193,7 +205,7 @@ def write_conllu(docs, file_):
             file_.write("# sent_id = {i}.{j}\n".format(i=i, j=j))
             file_.write("# text = {text}\n".format(text=sent.text))
             for k, token in enumerate(sent):
-                file_.write(token._.get_conllu_lines(k) + '\n')
+                file_.write(_get_token_conllu(token, k, len(sent)) + '\n')
             file_.write('\n')
             for word in sent:
                 if word.head.i == word.i and word.dep_ == 'ROOT':
@@ -206,6 +218,35 @@ def write_conllu(docs, file_):
                     print(w.i, w.text, w.head.text, w.head.i, w.dep_)
                 raise ValueError
 
+
+def _get_token_conllu(token, k, sent_len):
+    if token.check_morph(Fused_begin) and (k+1 < sent_len):
+        n = 1
+        text = [token.text]
+        while token.nbor(n).check_morph(Fused_inside):
+            text.append(token.nbor(n).text)
+            n += 1
+        id_ = '%d-%d' % (k+1, (k+n))
+        fields = [id_, ''.join(text)] + ['_'] * 8
+        lines = ['\t'.join(fields)]
+    else:
+        lines = []
+    if token.head.i == token.i:
+        head = 0
+    else:
+        head = k + (token.head.i - token.i) + 1
+    fields = [str(k+1), token.text, token.lemma_, token.pos_, token.tag_, '_',
+              str(head), token.dep_.lower(), '_', '_']
+    if token.check_morph(Fused_begin) and (k+1 < sent_len):
+        if k == 0:
+            fields[1] = token.norm_[0].upper() + token.norm_[1:]
+        else:
+            fields[1] = token.norm_
+    elif token.check_morph(Fused_inside):
+        fields[1] = token.norm_
+
+    lines.append('\t'.join(fields))
+    return '\n'.join(lines)
 
 
 def print_progress(itn, losses, ud_scores):
