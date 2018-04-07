@@ -3,6 +3,7 @@ import pytest
 from ...tokens.doc import Doc
 from ...vocab import Vocab
 from ...syntax.stateclass import StateClass
+from ...syntax.arc_eager import ArcEager
 
 
 def get_doc(words, vocab=None):
@@ -41,3 +42,31 @@ def test_split():
     assert state.queue == [0, 1, 2, 3]
     state.split_token(1, 2)
     assert state.queue == [0, 1, 1*4+1, 2*4+1, 2, 3]
+
+def test_finalize_state():
+    doc = get_doc('ab')
+    M = ArcEager(doc.vocab.strings)
+    M.add_action(0, 0)
+    M.add_action(1, 0)
+    M.add_action(2, 'dep')
+    M.add_action(3, 'dep')
+    M.add_action(4, 'ROOT')
+    M.add_action(5, '1')
+    state = StateClass(doc, max_split=M.max_split)
+    M.transition(state, 'P-1')
+    M.transition(state, 'S')
+    M.transition(state, 'R-dep')
+    M.transition(state, 'D')
+    M.transition(state, 'L-dep')
+    M.transition(state, 'S')
+    M.transition(state, 'B-ROOT')
+    assert state.is_final()
+    M._py_finalize_state(state)
+    output = state.get_doc(doc.vocab)
+    assert len(output) == 3
+    assert output[0].head.i == 2
+    assert output[1].head.i == 0
+    assert output[2].head.i == 2
+    assert output[0].dep_ == 'dep'
+    assert output[1].dep_ == 'dep'
+    assert output[2].dep_ == 'ROOT'
