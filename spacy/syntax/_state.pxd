@@ -578,3 +578,4 @@ cdef cppclass StateC:
         this._n_until_break = src._n_until_break
         this.offset = src.offset
         this._empty_token = src._empty_token
+        this._hist = src._hist
