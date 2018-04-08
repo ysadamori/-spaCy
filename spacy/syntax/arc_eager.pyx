@@ -13,7 +13,7 @@ from libcpp.vector cimport vector
 from libc.stdlib cimport calloc, free
 from libc.string cimport memcpy
 
-from ..typedefs cimport hash_t
+from ..typedefs cimport hash_t, attr_t
 from ..strings cimport hash_string
 from .stateclass cimport StateClass
 from ._state cimport StateC, TokenIndexC
@@ -27,7 +27,7 @@ from ..morphology cimport Fused_inside
 # Calculate cost as gold/not gold. We don't use scalar value anyway.
 cdef int BINARY_COSTS = 1
 cdef weight_t MIN_SCORE = -90000
-cdef hash_t SUBTOK_LABEL = hash_string('subtok')
+cdef attr_t SUBTOK_LABEL = hash_string('subtok')
 
 # Sets NON_MONOTONIC, USE_BREAK, USE_SPLIT, MAX_SPLIT
 include "compile_time.pxi"
@@ -801,7 +801,10 @@ cdef class ArcEager(TransitionSystem):
         is_valid[SPLIT] = Split.is_valid(st, 0)
         cdef int i
         for i in range(self.n_moves):
-            output[i] = is_valid[self.c[i].move]
+            if self.c[i].label == SUBTOK_LABEL:
+                output[i] = self.c[i].is_valid(st, self.c[i].label)
+            else:
+                output[i] = is_valid[self.c[i].move]
 
     cdef int set_costs(self, int* is_valid, weight_t* costs,
                        StateClass stcls, GoldParse gold) except -1:
