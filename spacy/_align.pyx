@@ -80,7 +80,6 @@ i.e. D[i,j+1] + 1
     a 2 0 0 0 0
     n 3 0 0 0 0
     g 4 0 0 0 0
-
 '''
 from __future__ import unicode_literals
 from libc.stdint cimport uint32_t
@@ -132,8 +131,8 @@ def rethink_alignment(A, B):
                     b_token += B[b]
                     b_region.append(b)
                 else:
-                    print(A)
-                    print(B)
+                    print(A[a-5:a+5])
+                    print(B[b-5:b+5])
                     raise ValueError("Mismatched tokens during alignment: (%s, %s)" % (a_token, b_token)) 
             a += 1
             b += 1
