@@ -418,9 +418,10 @@ def extract_tokenizer_exceptions(paths):
                 if '-' in token[0]:
                     start, end = token[0].split('-')
                     length = int(end) - int(start)
-                    subtokens = sent[i+1 : i+1+length+1]
-                    forms = [t[1].lower() for t in subtokens]
-                    fused[token[1]][tuple(forms)].append(subtokens)
+                    if length < len(token[1]):
+                        subtokens = sent[i+1 : i+1+length+1]
+                        forms = [t[1].lower() for t in subtokens]
+                        fused[token[1]][tuple(forms)].append(subtokens)
     exc = {}
     for word, expansions in fused.items():
         by_freq = [(len(occurs), key, occurs) for key, occurs in expansions.items()]
