@@ -384,6 +384,8 @@ cdef class Break:
             return 0
         elif st.stack_depth() < 1:
             return 0
+        elif st._n_until_break != -1:
+            return 0
         elif st._sent[st.B_(0).l_edge].sent_start == -1:
             return 0
         elif st.B(0).j != 0:
