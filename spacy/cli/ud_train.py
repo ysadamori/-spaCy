@@ -263,6 +263,14 @@ def _get_token_conllu(token, k, sent_len):
             fields[1] = token.norm_
     elif token.check_morph(Fused_inside):
         fields[1] = token.norm_
+    elif token._.split_start is not None:
+        split_start = token._.split_start
+        split_end = token._.split_end
+        split_len = (split_end.i - split_start.i) + 1
+        n_in_split = token.i - split_start.i
+        subtokens = guess_fused_orths(split_start.text, [''] * split_len)
+        print(split_start, subtokens)
+        fields[1] = subtokens[n_in_split]
 
     lines.append('\t'.join(fields))
     return '\n'.join(lines)
@@ -349,6 +357,7 @@ def get_token_split_start(token):
         i = -1
         while token.nbor(i).text == '':
             i -= 1
+        print("Split start", token.text, token.nbor(i).text)
         return token.nbor(i)
     elif (token.i+1) < len(token.doc) and token.nbor(1).text == '':
         return token
@@ -427,6 +436,8 @@ def extract_tokenizer_exceptions(paths):
         by_freq = [(len(occurs), key, occurs) for key, occurs in expansions.items()]
         freq, subtoken_norms, occurs = max(by_freq)
         subtoken_orths = guess_fused_orths(word, subtoken_norms)
+        if word == 'dele':
+            print(freq, word, subtoken_orths, subtoken_norms)
         analysis = []
         for orth, norm in zip(subtoken_orths, subtoken_norms):
             assert len(orth) != 0, (word, subtoken_orths)
@@ -452,6 +463,7 @@ def guess_fused_orths(word, ud_forms):
         output = []
         remain = word
         for subtoken in ud_forms:
+            assert len(subtoken) >= 1
             output.append(remain[:len(subtoken)])
             remain = remain[len(subtoken):]
         assert len(remain) == 0, (word, ud_forms, remain)
@@ -463,6 +475,7 @@ def guess_fused_orths(word, ud_forms):
         output = [first]
         remain = word[len(first):]
         for i in range(1, len(ud_forms)):
+            assert remain
             output.append(remain[:1])
             remain = remain[1:]
         assert len(remain) == 0, (word, output, remain)
