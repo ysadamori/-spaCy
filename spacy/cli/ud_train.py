@@ -428,10 +428,13 @@ def extract_tokenizer_exceptions(paths):
         subtoken_orths = guess_fused_orths(word, subtoken_norms)
         analysis = []
         for orth, norm in zip(subtoken_orths, subtoken_norms):
+            assert len(orth) != 0, (word, subtoken_orths)
+            assert len(norm) != 0
             analysis.append({'ORTH': orth, 'NORM': norm})
         analysis[0]['morphology'] = [Fused_begin]
         for subtoken in analysis[1:]:
             subtoken['morphology'] = [Fused_inside]
+            subtoken['SENT_START'] = -1
         exc[word] = analysis
     return exc
 
