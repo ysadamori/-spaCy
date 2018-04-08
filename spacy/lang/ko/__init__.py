@@ -14,8 +14,6 @@ class KoreanDefaults(Language.Defaults):
     lex_attr_getters[LANG] = lambda text: 'ko'
     suffixes = tuple(LIST_PUNCT) + ('\.',)
 
-print(KoreanDefaults.suffixes)
-
 
 class Korean(Language):
     lang = 'ko'
