@@ -569,8 +569,8 @@ def main(ud_dir, parses_dir, config, corpus, limit=0, use_gpu=-1):
 
     optimizer = initialize_pipeline(nlp, docs, golds, config, use_gpu)
 
-    batch_sizes = compounding(config.batch_size/100, config.batch_size, 1.001)
-    max_doc_length = compounding(1., 100., 1.001)
+    batch_sizes = compounding(config.batch_size/10, config.batch_size, 1.001)
+    max_doc_length = compounding(5., 20., 1.001)
     for i in range(config.nr_epoch):
         docs, golds = read_data(nlp, paths.train.conllu.open(), paths.train.text.open(),
                                 max_doc_length=max_doc_length, limit=limit)
