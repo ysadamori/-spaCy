@@ -63,28 +63,49 @@ def read_data(nlp, conllu_file, text_file, raw_text=True, oracle_segments=False,
         for cs in cd:
             sent = defaultdict(list)
             fused_ids = set()
+            fused_orths = []
+            inside_fused = False
+            fused_key = None
             for id_, word, lemma, pos, tag, morph, head, dep, _, space_after in cs:
                 if '.' in id_:
                     continue
                 if '-' in id_:
+                    if inside_fused:
+                        # End fused region
+                        sent['words'].extend(guess_fused_orths(fused_key, fused_orths))
+                        fused_ids = set()
+                    # Begin fused region
+                    inside_fused = True
                     fuse_start, fuse_end = id_.split('-')
                     for sub_id in range(int(fuse_start), int(fuse_end)+1):
                         fused_ids.add(str(sub_id))
                     sent['tokens'].append(word)
+                    fused_key = word
+                    fused_orths = []
                     continue
-                if id_ not in fused_ids:
+                if id_ in fused_ids:
+                    fused_orths.append(word)
+                    if id_ == fuse_end and space_after != 'SpaceAfter=No':
+                        sent['tokens'][-1] += ' '
+                else:
+                    if inside_fused:
+                        # End fused region
+                        sent['words'].extend(guess_fused_orths(fused_key, fused_orths))
+                    fused_orths = []
+                    inside_fused = False
                     sent['tokens'].append(word)
+                    sent['words'].append(word)
                     if space_after == '_':
                         sent['tokens'][-1] += ' '
-                elif id_ == fuse_end and space_after != 'SpaceAfter=No':
-                    sent['tokens'][-1] += ' '
                 id_ = int(id_)-1
                 head = int(head)-1 if head != '0' else id_
-                sent['words'].append(word)
+                sent['spaces'].append(space_after != 'SpaceAfter=No')
                 sent['tags'].append(tag)
                 sent['heads'].append(head)
                 sent['deps'].append('ROOT' if dep == 'root' else dep)
-                sent['spaces'].append(space_after != 'SpaceAfter=No')
+            if inside_fused:
+                sent['words'].extend(guess_fused_orths(fused_key, fused_orths))
+            assert len(sent['words']) == len(sent['spaces'])
             sent['entities'] = ['-'] * len(sent['words'])
             sent['heads'], sent['deps'] = projectivize(sent['heads'],
                                                        sent['deps'])
@@ -142,14 +163,11 @@ def _make_gold(nlp, text, sent_annots):
     flat = defaultdict(list)
     for sent in sent_annots:
         flat['heads'].extend(len(flat['words'])+head for head in sent['heads'])
-        for field in ['words', 'tags', 'deps', 'entities', 'spaces', 'tokens']:
+        for field in ['words', 'tags', 'deps', 'entities', 'tokens']:
             flat[field].extend(sent[field])
-    # Construct text if necessary
-    assert len(flat['words']) == len(flat['spaces'])
     if text is None:
         text = ''.join(flat['tokens'])
     doc = nlp.make_doc(text)
-    flat.pop('spaces')
     flat.pop('tokens')
     gold = GoldParse(doc, **flat)
     return doc, gold
@@ -390,6 +408,63 @@ def initialize_pipeline(nlp, docs, golds, config, device):
     return nlp.begin_training(lambda: golds_to_gold_tuples(docs, golds), device=device)
 
 
+def extract_tokenizer_exceptions(paths):
+    with paths.train.conllu.open() as file_:
+        conllu = read_conllu(file_)
+    fused = defaultdict(lambda: defaultdict(list))
+    for doc in conllu:
+        for sent in doc:
+            for i, token in enumerate(sent):
+                if '-' in token[0]:
+                    start, end = token[0].split('-')
+                    length = int(end) - int(start)
+                    subtokens = sent[i+1 : i+1+length+1]
+                    forms = [t[1].lower() for t in subtokens]
+                    fused[token[1]][tuple(forms)].append(subtokens)
+    exc = {}
+    for word, expansions in fused.items():
+        by_freq = [(len(occurs), key, occurs) for key, occurs in expansions.items()]
+        freq, subtoken_norms, occurs = max(by_freq)
+        subtoken_orths = guess_fused_orths(word, subtoken_norms)
+        analysis = []
+        for orth, norm in zip(subtoken_orths, subtoken_norms):
+            analysis.append({'ORTH': orth, 'NORM': norm})
+        analysis[0]['morphology'] = [Fused_begin]
+        for subtoken in analysis[1:]:
+            subtoken['morphology'] = [Fused_inside]
+        exc[word] = analysis
+    return exc
+
+
+def guess_fused_orths(word, ud_forms):
+    '''The UD data 'fused tokens' don't necessarily expand to keys that match
+    the form. We need orths that exact match the string. Here we make a best
+    effort to divide up the word.'''
+    if word == ''.join(ud_forms):
+        # Happy case: we get a perfect split, with each letter accounted for.
+        return ud_forms
+    elif len(word) == sum(len(subtoken) for subtoken in ud_forms):
+        # Unideal, but at least lengths match.
+        output = []
+        remain = word
+        for subtoken in ud_forms:
+            output.append(remain[:len(subtoken)])
+            remain = remain[len(subtoken):]
+        assert len(remain) == 0, (word, ud_forms, remain)
+        return output
+    else:
+        # Let's say word is 6 long, and there are three subtokens. The orths
+        # *must* equal the original string. Arbitrarily, split [4, 1, 1]
+        first = word[:len(word)-(len(ud_forms)-1)]
+        output = [first]
+        remain = word[len(first):]
+        for i in range(1, len(ud_forms)):
+            output.append(remain[:1])
+            remain = remain[1:]
+        assert len(remain) == 0, (word, output, remain)
+        return output
+
+
 ########################
 # Command line helpers #
 ########################
@@ -455,6 +530,9 @@ def main(ud_dir, parses_dir, config, corpus, limit=0, use_gpu=-1):
         (parses_dir / corpus).mkdir()
     print("Train and evaluate", corpus, "using lang", paths.lang)
     nlp = load_nlp(paths.lang, config)
+    tokenizer_exceptions = extract_tokenizer_exceptions(paths)
+    for orth, subtokens in tokenizer_exceptions.items():
+        nlp.tokenizer.add_special_case(orth, subtokens)
 
     docs, golds = read_data(nlp, paths.train.conllu.open(), paths.train.text.open(),
                             max_doc_length=config.max_doc_length, limit=limit)
