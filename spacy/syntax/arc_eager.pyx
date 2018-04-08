@@ -277,6 +277,8 @@ cdef class LeftArc:
             return 0
         elif st.at_break():
             return 0
+        elif label == SUBTOK_LABEL and st.S(0).i != (st.B(0).i-1):
+            return 0
         else:
             return 1
 
@@ -334,6 +336,8 @@ cdef class RightArc:
             return 0
         # If there's (perhaps partial) parse pre-set, don't allow cycle.
         elif st.has_head(st.S(0)) and st.H(st.S(0)).i == st.B(0).i:
+            return 0
+        elif label == SUBTOK_LABEL and st.S(0).i != (st.B(0).i-1):
             return 0
         else:
             return 1
