@@ -200,7 +200,8 @@ def setup_package():
                 'regex==2017.4.5',
                 'ftfy>=4.4.2,<5.0.0',
                 'msgpack-python==0.5.4',
-                'msgpack-numpy==0.4.1'],
+                'msgpack-numpy==0.4.1',
+                'cytoolz>=0.9.0,<0.10.0'],
             setup_requires=['wheel'],
             classifiers=[
                 'Development Status :: 5 - Production/Stable',
