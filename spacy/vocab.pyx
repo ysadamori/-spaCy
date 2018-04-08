@@ -230,6 +230,7 @@ cdef class Vocab:
 
     cdef const TokenC* make_fused_token(self, substrings) except NULL:
         cdef int i
+        cdef attr_t attr_value
         tokens = <TokenC*>self.mem.alloc(len(substrings) + 1, sizeof(TokenC))
         for i, props in enumerate(substrings):
             features = props.get('morphology', frozenset())
@@ -244,8 +245,12 @@ cdef class Vocab:
             for feature in features:
                 self.morphology.set_feature(&token.morph, feature, True)
             for attr_id, value in props.items():
-                Token.set_struct_attr(token, attr_id, value)
-                Lexeme.set_struct_attr(lex, attr_id, value)
+                if value < 0:
+                    attr_value = <attr_t>(<int>value)
+                else:
+                    attr_value = value
+                Token.set_struct_attr(token, attr_id, attr_value)
+                Lexeme.set_struct_attr(lex, attr_id, attr_value)
         return tokens
 
     @property
