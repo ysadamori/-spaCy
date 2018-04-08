@@ -21,6 +21,8 @@ from . import nonproj
 from .transition_system cimport move_cost_func_t, label_cost_func_t
 from ..gold cimport GoldParse, GoldParseC
 from ..structs cimport TokenC
+from ..morphology cimport Fused_begin
+from ..morphology cimport Fused_inside
 
 # Calculate cost as gold/not gold. We don't use scalar value anyway.
 cdef int BINARY_COSTS = 1
@@ -767,6 +769,15 @@ cdef class ArcEager(TransitionSystem):
 
     def finalize_doc(self, doc):
         doc.is_parsed = True
+        # Overrule 'subtok' prediction if token is fused. This logic is
+        # difficult to include in the validity constraints, as it requires
+        # Python-level access.
+        for token in doc:
+            if token.dep == SUBTOK_LABEL:
+                if token.check_morph(Fused_begin) or token.check_morph(Fused_inside):
+                    token.dep_ = 'dep'
+                elif token.head.check_morph(Fused_begin) or token.head.check_morph(Fused_inside):
+                    token.dep_ = 'dep'
         for sent in doc.sents:
             for word in sent:
                 if word.head.i == word.i and word.dep_ == 'ROOT':
