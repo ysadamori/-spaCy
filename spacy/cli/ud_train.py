@@ -60,6 +60,12 @@ def read_data(nlp, conllu_file, text_file, raw_text=True, oracle_segments=False,
     golds = []
     for doc_id, (text, cd) in enumerate(zip(paragraphs, conllu)):
         sent_annots = []
+        if max_doc_length is not None:
+            # Draw next doc length, and randomize it (but keep expectation)
+            next_max_doc_length = int(next(max_doc_length)) * random.random() * 2
+            next_max_doc_length = max(1, next_max_doc_length)
+        else:
+            next_max_doc_length = None
         for cs in cd:
             sent = defaultdict(list)
             fused_ids = set()
@@ -114,7 +120,7 @@ def read_data(nlp, conllu_file, text_file, raw_text=True, oracle_segments=False,
                 golds.append(GoldParse(docs[-1], **sent))
 
             sent_annots.append(sent)
-            if raw_text and max_doc_length and len(sent_annots) >= max_doc_length:
+            if raw_text and next_max_doc_length and len(sent_annots) >= next_max_doc_length:
                 doc, gold = _make_gold(nlp, None, sent_annots)
                 sent_annots = []
                 docs.append(doc)
@@ -432,8 +438,12 @@ def extract_tokenizer_exceptions(paths):
                         forms = [t[1].lower() for t in subtokens]
                         fused[token[1]][tuple(forms)].append(subtokens)
     exc = {}
+    all_exceptions = []
     for word, expansions in fused.items():
         by_freq = [(len(occurs), key, occurs) for key, occurs in expansions.items()]
+        by_freq.sort(reverse=True)
+        for freq, subtoken_norms, occurs in by_freq:
+            all_exceptions.append((freq, word, subtoken_norms))
         freq, subtoken_norms, occurs = max(by_freq)
         subtoken_orths = guess_fused_orths(word, subtoken_norms)
         if word == 'dele':
@@ -448,6 +458,9 @@ def extract_tokenizer_exceptions(paths):
             subtoken['morphology'] = [Fused_inside]
             subtoken['SENT_START'] = -1
         exc[word] = analysis
+    all_exceptions.sort(reverse=True)
+    for freq, word, subtoken_norms in all_exceptions:
+        print(freq, word, '->', ' '.join(subtoken_norms))
     return exc
 
 
@@ -550,14 +563,17 @@ def main(ud_dir, parses_dir, config, corpus, limit=0, use_gpu=-1):
     tokenizer_exceptions = extract_tokenizer_exceptions(paths)
     for orth, subtokens in tokenizer_exceptions.items():
         nlp.tokenizer.add_special_case(orth, subtokens)
-
+    
     docs, golds = read_data(nlp, paths.train.conllu.open(), paths.train.text.open(),
-                            max_doc_length=config.max_doc_length, limit=limit)
+                            max_doc_length=None, limit=limit)
 
     optimizer = initialize_pipeline(nlp, docs, golds, config, use_gpu)
 
-    batch_sizes = compounding(config.batch_size, config.batch_size, 1.001)
+    batch_sizes = compounding(config.batch_size/100, config.batch_size, 1.001)
+    max_doc_length = compounding(1., 100., 1.001)
     for i in range(config.nr_epoch):
+        docs, golds = read_data(nlp, paths.train.conllu.open(), paths.train.text.open(),
+                                max_doc_length=max_doc_length, limit=limit)
         docs = [nlp.make_doc(doc.text) for doc in docs]
         Xs = list(zip(docs, golds))
         random.shuffle(Xs)
