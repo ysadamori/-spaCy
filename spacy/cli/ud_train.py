@@ -419,7 +419,7 @@ def initialize_pipeline(nlp, docs, golds, config, device):
     return nlp.begin_training(lambda: golds_to_gold_tuples(docs, golds), device=device)
 
 
-def extract_tokenizer_exceptions(paths):
+def extract_tokenizer_exceptions(paths, min_freq=20):
     with paths.train.conllu.open() as file_:
         conllu = read_conllu(file_)
     fused = defaultdict(lambda: defaultdict(list))
@@ -441,9 +441,9 @@ def extract_tokenizer_exceptions(paths):
         for freq, subtoken_norms, occurs in by_freq:
             all_exceptions.append((freq, word, subtoken_norms))
         freq, subtoken_norms, occurs = max(by_freq)
+        if freq < min_freq:
+            continue
         subtoken_orths = guess_fused_orths(word, subtoken_norms)
-        if word == 'dele':
-            print(freq, word, subtoken_orths, subtoken_norms)
         analysis = []
         for orth, norm in zip(subtoken_orths, subtoken_norms):
             assert len(orth) != 0, (word, subtoken_orths)
@@ -456,7 +456,8 @@ def extract_tokenizer_exceptions(paths):
         exc[word] = analysis
     all_exceptions.sort(reverse=True)
     for freq, word, subtoken_norms in all_exceptions:
-        print(freq, word, '->', ' '.join(subtoken_norms))
+        if freq >= min_freq:
+            print(freq, word, '->', ' '.join(subtoken_norms))
     return exc
 
 
