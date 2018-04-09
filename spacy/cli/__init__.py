@@ -10,4 +10,5 @@ from .vocab import make_vocab as vocab
 from .init_model import init_model
 from .validate import validate
 from .ud_train import main as ud_train
+from .ud_run_test import main as ud_run_test
 from .conll17_ud_eval import main as ud_evaluate
