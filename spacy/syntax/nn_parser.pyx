@@ -601,6 +601,7 @@ cdef class Parser:
         cdef int best_i
         cdef Transition best
         cdef weight_t* scores_ptr
+        cdef int hist_size = self.cfg.get('hist_size', 0)
         while todo:
             states, golds = zip(*todo)
             token_ids = self.get_token_ids(states)
@@ -608,8 +609,8 @@ cdef class Parser:
             if drop != 0:
                 mask = vec2scores.ops.get_dropout_mask(vector.shape, drop)
                 vector *= mask
-            hists = numpy.asarray([st.history for st in states], dtype='i')
-            if self.cfg.get('hist_size', 0):
+            if hist_size:
+                hists = numpy.asarray([st.history[:hist_size] for st in states], dtype='i')
                 scores, bp_scores = vec2scores.begin_update((vector, hists), drop=drop)
             else:
                 scores, bp_scores = vec2scores.begin_update(vector, drop=drop)
