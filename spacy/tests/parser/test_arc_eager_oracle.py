@@ -183,7 +183,7 @@ def test_split_oracle(arc_eager, vocab):
     doc = Doc(vocab, words=words)
     heads = [2, 2, 2]
     deps = ['dep', 'dep', 'ROOT']
-    actions = ['P-1', 'S', 'S', 'L-dep', 'L-dep', 'S', 'B-ROOT']
+    actions = ['P-1', 'S', 'S', 'L-dep', 'L-dep', 'S']
     gold = GoldParse(doc, words=gold_words, heads=heads, deps=deps)
     assert gold.heads == [[1, 1], 1]
     assert gold.labels == [['dep', 'dep'], 'ROOT']

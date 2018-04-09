@@ -275,7 +275,6 @@ def _get_token_conllu(token, k, sent_len):
         split_len = (split_end.i - split_start.i) + 1
         n_in_split = token.i - split_start.i
         subtokens = guess_fused_orths(split_start.text, [''] * split_len)
-        print(split_start, subtokens)
         fields[1] = subtokens[n_in_split]
 
     lines.append('\t'.join(fields))
@@ -343,12 +342,10 @@ def get_token_conllu(token, i):
         assert text_len > split_len
         if n_in_split == 0:
             text = token.text[:text_len - split_len]
-            print("Split start", text, token.text, text_len, split_len)
         else:
             start = (text_len - split_len) + (n_in_split-1)
             end = start + 1
             text = split_start.text[start : end]
-            print("Split", n_in_split, text, token.text)
     else:
         text = token.text
 
@@ -364,7 +361,6 @@ def get_token_split_start(token):
         i = -1
         while token.nbor(i).text == '':
             i -= 1
-        print("Split start", token.text, token.nbor(i).text)
         return token.nbor(i)
     elif (token.i+1) < len(token.doc) and token.nbor(1).text == '':
         return token
@@ -425,7 +421,7 @@ def initialize_pipeline(nlp, docs, golds, config, device):
     return nlp.begin_training(lambda: golds_to_gold_tuples(docs, golds), device=device)
 
 
-def extract_tokenizer_exceptions(paths):
+def extract_tokenizer_exceptions(paths, min_freq=20):
     with paths.train.conllu.open() as file_:
         conllu = read_conllu(file_)
     fused = defaultdict(lambda: defaultdict(list))
@@ -447,9 +443,9 @@ def extract_tokenizer_exceptions(paths):
         for freq, subtoken_norms, occurs in by_freq:
             all_exceptions.append((freq, word, subtoken_norms))
         freq, subtoken_norms, occurs = max(by_freq)
+        if freq < min_freq:
+            continue
         subtoken_orths = guess_fused_orths(word, subtoken_norms)
-        if word == 'dele':
-            print(freq, word, subtoken_orths, subtoken_norms)
         analysis = []
         for orth, norm in zip(subtoken_orths, subtoken_norms):
             assert len(orth) != 0, (word, subtoken_orths)
@@ -462,7 +458,8 @@ def extract_tokenizer_exceptions(paths):
         exc[word] = analysis
     all_exceptions.sort(reverse=True)
     for freq, word, subtoken_norms in all_exceptions:
-        print(freq, word, '->', ' '.join(subtoken_norms))
+        if freq >= min_freq:
+            print(freq, word, '->', ' '.join(subtoken_norms))
     return exc
 
 

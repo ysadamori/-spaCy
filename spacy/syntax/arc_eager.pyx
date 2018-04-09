@@ -193,6 +193,8 @@ cdef class Split:
             return 0
         elif st.B_(0).lex.length == 1:
             return 0
+        elif st.at_break():
+            return 0
         else:
             return 1
 
@@ -279,8 +281,8 @@ cdef class LeftArc:
             return 0
         elif st.at_break():
             return 0
-        elif label == SUBTOK_LABEL and st.S(0).i != (st.B(0).i-1):
-            return 0
+        #elif label == SUBTOK_LABEL and st.S(0).i != (st.B(0).i-1):
+        #    return 0
         else:
             return 1
 
@@ -396,13 +398,19 @@ cdef class Break:
             return 0
         elif st.B(0).j != 0:
             return 0
+        #elif st.B_(0).l_kids != 0: # Testing -- hack
+        #    # If we allow left dependents, we need to check l_edge is not split
+        #    return 0
         else:
             return 1
 
     @staticmethod
     cdef int transition(StateC* st, attr_t label) nogil:
         st.set_break(0)
-        st.pop()
+        if st.stack_depth() == 1 or st.has_head(st.S(0)):
+            st.pop()
+        else:
+            st.unshift()
 
     @staticmethod
     cdef weight_t cost(StateClass s, const GoldParseC* gold, attr_t label) nogil:
