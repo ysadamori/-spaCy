@@ -609,6 +609,9 @@ def main(ud_dir, output_dir, config, corpus, limit=0, use_gpu=-1):
             except RecursionError:
                 dev_scores = None
                 parsed_docs = None
+            except IndexError:
+                dev_scores = None
+                parsed_docs = None
             training_log.append(print_progress(i, losses, dev_scores))
             if parsed_docs is not None:
                 _render_parses(i, parsed_docs[:50]) 
