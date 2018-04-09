@@ -398,7 +398,7 @@ cdef class Break:
             return 0
         elif st.B(0).j != 0:
             return 0
-        elif st.B_(0).l_kids != 0: # Testing -- hack
+        elif USE_SPLIT and st.B_(0).l_kids != 0: # Testing -- hack
             # If we allow left dependents, we need to check l_edge is not split
             return 0
         else:
