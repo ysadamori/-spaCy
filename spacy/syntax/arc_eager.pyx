@@ -898,8 +898,8 @@ cdef class ArcEager(TransitionSystem):
 
     def get_beam_annot(self, Beam beam):
         length = (<StateC*>beam.at(0)).length
-        heads = [{} for _ in range(length)]
-        deps = [{} for _ in range(length)]
+        heads = [{} for _ in range(length*MAX_SPLIT)]
+        deps = [{} for _ in range(length*MAX_SPLIT)]
         probs = beam.probs
         for i in range(beam.size):
             state = <StateC*>beam.at(i)
