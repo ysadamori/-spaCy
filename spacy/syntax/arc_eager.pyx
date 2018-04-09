@@ -402,7 +402,10 @@ cdef class Break:
     @staticmethod
     cdef int transition(StateC* st, attr_t label) nogil:
         st.set_break(0)
-        st.pop()
+        if st.stack_depth() == 1 or st.has_head(st.S(0)):
+            st.pop()
+        else:
+            st.unshift()
 
     @staticmethod
     cdef weight_t cost(StateClass s, const GoldParseC* gold, attr_t label) nogil:
