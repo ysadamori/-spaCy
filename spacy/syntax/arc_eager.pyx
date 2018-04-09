@@ -279,8 +279,8 @@ cdef class LeftArc:
             return 0
         elif st.at_break():
             return 0
-        elif label == SUBTOK_LABEL and st.S(0).i != (st.B(0).i-1):
-            return 0
+        #elif label == SUBTOK_LABEL and st.S(0).i != (st.B(0).i-1):
+        #    return 0
         else:
             return 1
 
