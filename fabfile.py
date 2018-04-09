@@ -90,3 +90,18 @@ def train():
     args = environ.get('SPACY_TRAIN_ARGS', '')
     with virtualenv(VENV_DIR) as venv_local:
         venv_local('spacy train {args}'.format(args=args))
+
+
+def conll17(treebank_dir, experiment_dir, config, corpus=''):
+    test_data_dir = Path(treebank_dir) / 'ud-test-v2.0-conll2017'
+    assert test_data_dir.exists()
+    assert test_data_dir.is_dir()
+    if corpus:
+        corpora = [corpus]
+    else:
+        corpora = ['UD_English', 'UD_French', 'UD_German', 'UD_Spanish', 'UD_Chinese', 'UD_Japanese', 'UD_Vietnamese', 'UD_Persian']
+
+    with virtualenv(VENV_DIR) as venv_local:
+        for corpus in corpora:
+            venv_local(f'spacy ud-train {treebank_dir} {experiment_dir} {config} {corpus}')
+            venv_local(f'spacy ud-run-test {test_data_dir} {experiment_dir} {corpus}')
