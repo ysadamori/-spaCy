@@ -575,10 +575,10 @@ def main(ud_dir, output_dir, config, corpus, limit=0, use_gpu=-1):
 
     optimizer = initialize_pipeline(nlp, docs, golds, config, use_gpu)
 
-    #batch_sizes = compounding(config.batch_size/10, config.batch_size, 1.001)
-    #max_doc_length = compounding(5., 20., 1.001)
-    batch_sizes = compounding(config.batch_size, config.batch_size, 1.001)
-    max_doc_length = compounding(10., 10., 1.001)
+    batch_sizes = compounding(config.batch_size/10, config.batch_size, 1.001)
+    max_doc_length = compounding(5., 20., 1.001)
+    #batch_sizes = compounding(config.batch_size, config.batch_size, 1.001)
+    #max_doc_length = compounding(10., 10., 1.001)
  
     best_score = 0.0
     training_log = []
@@ -618,6 +618,7 @@ def main(ud_dir, output_dir, config, corpus, limit=0, use_gpu=-1):
             if dev_scores is not None and dev_scores['LAS'].f1 >= best_score:
                 nlp.meta['log'] = training_log
                 nlp.to_disk(model_output)
+                best_score = dev_scores['LAS'].f1
 
 
 def _render_parses(i, to_render):
