@@ -811,10 +811,16 @@ class MultitaskObjective(Tagger):
             sent_tags = ['I-SENT'] * len(words)
 
         def _find_root(child):
+            if not isinstance(child, int):
+                return None
+            if not isinstance(heads[child], int):
+                return None
             seen = set([child])
             while child is not None and heads[child] != child:
                 seen.add(child)
                 child = heads[child]
+                if not isinstance(child, int):
+                    return None
             return child
 
         sentences = {}
