@@ -459,9 +459,6 @@ def extract_tokenizer_exceptions(paths, min_freq=20):
             subtoken['SENT_START'] = -1
         exc[word] = analysis
     all_exceptions.sort(reverse=True)
-    for freq, word, subtoken_norms in all_exceptions:
-        if freq >= min_freq:
-            print(freq, word, '->', ' '.join(subtoken_norms))
     return exc
 
 
