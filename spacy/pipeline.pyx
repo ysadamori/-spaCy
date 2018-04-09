@@ -819,7 +819,7 @@ class MultitaskObjective(Tagger):
             while child is not None and heads[child] != child:
                 seen.add(child)
                 child = heads[child]
-                if not isinstance(child, int):
+                if not isinstance(child, int) or not isinstance(heads[child], int):
                     return None
             return child
 
