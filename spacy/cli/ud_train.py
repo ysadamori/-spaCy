@@ -80,6 +80,7 @@ def read_data(nlp, conllu_file, text_file, raw_text=True, oracle_segments=False,
                         # End fused region
                         sent['words'].extend(guess_fused_orths(fused_key, fused_orths))
                         fused_ids = set()
+                        fused_orths = []
                     # Begin fused region
                     inside_fused = True
                     fuse_start, fuse_end = id_.split('-')
@@ -98,6 +99,7 @@ def read_data(nlp, conllu_file, text_file, raw_text=True, oracle_segments=False,
                         # End fused region
                         sent['words'].extend(guess_fused_orths(fused_key, fused_orths))
                     fused_orths = []
+                    fused_ids = set()
                     inside_fused = False
                     sent['tokens'].append(word)
                     sent['words'].append(word)
@@ -487,7 +489,7 @@ def guess_fused_orths(word, ud_forms):
         output = [first]
         remain = word[len(first):]
         for i in range(1, len(ud_forms)):
-            assert remain
+            #assert remain, (word, ud_forms)
             output.append(remain[:1])
             remain = remain[1:]
         assert len(remain) == 0, (word, output, remain)
@@ -573,8 +575,11 @@ def main(ud_dir, output_dir, config, corpus, limit=0, use_gpu=-1):
 
     optimizer = initialize_pipeline(nlp, docs, golds, config, use_gpu)
 
-    batch_sizes = compounding(config.batch_size/10, config.batch_size, 1.001)
-    max_doc_length = compounding(5., 20., 1.001)
+    #batch_sizes = compounding(config.batch_size/10, config.batch_size, 1.001)
+    #max_doc_length = compounding(5., 20., 1.001)
+    batch_sizes = compounding(config.batch_size, config.batch_size, 1.001)
+    max_doc_length = compounding(10., 10., 1.001)
+ 
     best_score = 0.0
     training_log = []
     for i in range(config.nr_epoch):
