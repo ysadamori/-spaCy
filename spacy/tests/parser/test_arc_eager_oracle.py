@@ -155,7 +155,7 @@ def test_non_monotonic_sequence_four_words(arc_eager, vocab):
     c4 = cost_history.pop(0)
     assert c4['D'] == 0.0
     c5 = cost_history.pop(0)
-    assert c5['B-ROOT'] == 0.0
+    assert c5['B-ROOT'] == 9000
  
 
 def test_oracle_at_sentence_break(arc_eager, vocab):
