@@ -6,6 +6,7 @@ from pathlib import Path
 from fabric.api import local, lcd, env, settings, prefix
 from os import path, environ
 import shutil
+import sys
 
 
 PWD = path.dirname(__file__)
@@ -93,12 +94,14 @@ def train():
 
 
 def conll17(treebank_dir, experiment_dir, config, corpus=''):
-    is_clean = local('git status --porcelain', capture=True)
-    if not is_clean:
+    is_not_clean = local('git status --porcelain', capture=True)
+    if is_not_clean:
         print("Repository is not clean")
+        print(is_not_clean)
         sys.exit(1)
-    sha = local('git rev-parse --short HEAD', capture=True)
-    experiment_dir = Path(experiment_dir) / sha
+    git_sha = local('git rev-parse --short HEAD', capture=True)
+    config_checksum = local('sha256sum {config}'.format(config=config), capture=True)
+    experiment_dir = Path(experiment_dir) / '{}--{}'.format(config_checksum[:6], git_sha)
     if not experiment_dir.exists():
         experiment_dir.mkdir()
     test_data_dir = Path(treebank_dir) / 'ud-test-v2.0-conll2017'
@@ -115,4 +118,4 @@ def conll17(treebank_dir, experiment_dir, config, corpus=''):
             venv_local('spacy ud-train {treebank_dir} {experiment_dir} {config} {corpus} -n 10'.format(
                 treebank_dir=treebank_dir, experiment_dir=experiment_dir, config=config, corpus=corpus))
             venv_local('spacy ud-run-test {test_data_dir} {experiment_dir} {corpus}'.format(
-                treebank_dir=treebank_dir, experiment_dir=experiment_dir, config=config, corpus=corpus))
+                test_data_dir=test_data_dir, experiment_dir=experiment_dir, config=config, corpus=corpus))
