@@ -765,6 +765,8 @@ class MultitaskObjective(Tagger):
 
     @staticmethod
     def make_tag(i, words, tags, heads, deps, ents):
+        if isinstance(tags[i], list) or isinstance(tags[i], tuple):
+            return None
         return tags[i]
 
     @staticmethod
