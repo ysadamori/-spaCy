@@ -275,7 +275,6 @@ def _get_token_conllu(token, k, sent_len):
         split_len = (split_end.i - split_start.i) + 1
         n_in_split = token.i - split_start.i
         subtokens = guess_fused_orths(split_start.text, [''] * split_len)
-        print(split_start, subtokens)
         fields[1] = subtokens[n_in_split]
 
     lines.append('\t'.join(fields))
@@ -342,12 +341,10 @@ def get_token_conllu(token, i):
         assert text_len > split_len
         if n_in_split == 0:
             text = token.text[:text_len - split_len]
-            print("Split start", text, token.text, text_len, split_len)
         else:
             start = (text_len - split_len) + (n_in_split-1)
             end = start + 1
             text = split_start.text[start : end]
-            print("Split", n_in_split, text, token.text)
     else:
         text = token.text
 
@@ -363,7 +360,6 @@ def get_token_split_start(token):
         i = -1
         while token.nbor(i).text == '':
             i -= 1
-        print("Split start", token.text, token.nbor(i).text)
         return token.nbor(i)
     elif (token.i+1) < len(token.doc) and token.nbor(1).text == '':
         return token
