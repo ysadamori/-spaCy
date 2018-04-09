@@ -251,18 +251,24 @@ def main(test_data_dir, experiment_dir, corpus):
     nlp = load_nlp(experiment_dir, corpus)
     
     treebank_code = nlp.meta['treebank']
-    text_path = test_data_dir / 'input' / 'conll17-ud-test-2017-05-09' / (treebank_code+'.txt')
-    gold_path = test_data_dir / 'gold' / 'conll17-ud-test-2017-05-09' / (treebank_code+'.conllu')
-    output_path = experiment_dir / corpus / 'test.conllu'
-    try:
-        parsed_docs, test_scores = evaluate(nlp, text_path, gold_path, output_path)
-    except RecursionError:
-        test_scores = None
-        parsed_docs = None
-    accuracy = print_results(test_scores)
-    acc_path = experiment_dir / corpus / 'test-accuracy.json'
-    with open(acc_path, 'w') as file_:
-        file_.write(json.dumps(accuracy, indent=2))
+    for section in ('dev', 'test'):
+        if section == 'dev':
+            section_dir = 'conll17-ud-development-2017-03-19'
+        else:
+            section_dir = 'conll17-ud-test-2017-05-09'
+        print(section)
+        text_path = test_data_dir / 'input' / section_dir / (treebank_code+'.txt')
+        gold_path = test_data_dir / 'gold' / section_dir / (treebank_code+'.conllu')
+        output_path = experiment_dir / corpus / '{section}.conllu'.format(section=section)
+        try:
+            parsed_docs, test_scores = evaluate(nlp, text_path, gold_path, output_path)
+        except RecursionError:
+            test_scores = None
+            parsed_docs = None
+        accuracy = print_results(test_scores)
+        acc_path = experiment_dir / corpus / '{section}-accuracy.json'.format(section=section)
+        with open(acc_path, 'w') as file_:
+            file_.write(json.dumps(accuracy, indent=2))
 
 
 if __name__ == '__main__':
