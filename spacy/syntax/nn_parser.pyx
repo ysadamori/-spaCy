@@ -32,6 +32,7 @@ from thinc cimport openblas
 
 from .._ml import zero_init, PrecomputableAffine, Tok2Vec, flatten
 from .._ml import link_vectors_to_models, create_default_optimizer
+from .._ml import HistoryFeatures
 from ..compat import json_dumps, copy_array
 from ..tokens.doc cimport Doc
 from ..gold cimport GoldParse
@@ -252,12 +253,8 @@ cdef class Parser:
                                            cfg.get('token_vector_width', 128))
         hidden_width = util.env_opt('hidden_width', cfg.get('hidden_width', 128))
         embed_size = util.env_opt('embed_size', cfg.get('embed_size', 5000))
-        hist_size = util.env_opt('history_feats', cfg.get('hist_size', 0))
-        hist_width = util.env_opt('history_width', cfg.get('hist_width', 0))
-        if hist_size != 0:
-            raise ValueError("Currently history size is hard-coded to 0")
-        if hist_width != 0:
-            raise ValueError("Currently history width is hard-coded to 0")
+        hist_size = util.env_opt('history_feats', cfg.get('hist_size', 8))
+        hist_width = util.env_opt('history_width', cfg.get('hist_width', 8))
         tok2vec = Tok2Vec(token_vector_width, embed_size,
                           pretrained_dims=cfg.get('pretrained_dims', 0))
         tok2vec = chain(tok2vec, flatten)
@@ -268,7 +265,8 @@ cdef class Parser:
 
         with Model.use_device('cpu'):
             upper = chain(
-                clone(Maxout(hidden_width, hidden_width), depth-1),
+                HistoryFeatures(nr_class=nr_class, hist_size=hist_size, nr_dim=hist_width),
+                Maxout(hidden_width, hidden_width+hist_size*hist_width),
                 zero_init(Affine(nr_class, hidden_width, drop_factor=0.0))
             )
 
@@ -419,9 +417,22 @@ cdef class Parser:
         bias = <float*>state2vec.bias.data
         cdef int nr_hidden = hidden_weights.shape[0]
         cdef int nr_task = states.size()
-        with nogil:
-            self._parseC(&states[0], nr_task, feat_weights, bias, hW, hb,
-                nr_class, nr_hidden, nr_feat, nr_piece)
+        if self.cfg.get('hist_size'):
+            todo = list(state_objs)
+            while todo:
+                token_ids = self.get_token_ids(todo)
+                vector = state2vec(token_ids)
+                hists = numpy.asarray([state.history for state in todo], dtype='i')
+                if self.cfg.get('hist_size', 0):
+                    scores = vec2scores((vector, hists))
+                else:
+                    scores = vec2scores(vector)
+                self.transition_batch(todo, scores)
+                todo = [state for state in todo if not state.is_final()]
+        else:
+            with nogil:
+                self._parseC(&states[0], nr_task, feat_weights, bias, hW, hb,
+                    nr_class, nr_hidden, nr_feat, nr_piece)
         PyErr_CheckSignals()
         tokvecs = self.model[0].ops.unflatten(tokvecs,
                                     [len(doc) for doc in docs])

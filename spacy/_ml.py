@@ -3,14 +3,14 @@ from __future__ import unicode_literals
 
 import numpy
 from thinc.v2v import Model, Maxout, Softmax, Affine, ReLu
-from thinc.i2v import HashEmbed, StaticVectors
+from thinc.i2v import HashEmbed, StaticVectors, Embed
 from thinc.t2t import ExtractWindow, ParametricAttention
 from thinc.t2v import Pooling, sum_pool
 from thinc.misc import Residual
 from thinc.misc import LayerNorm as LN
 from thinc.api import add, layerize, chain, clone, concatenate, with_flatten
 from thinc.api import FeatureExtracter, with_getitem, flatten_add_lengths
-from thinc.api import uniqued, wrap, noop
+from thinc.api import uniqued, wrap, noop, clone
 from thinc.linear.linear import LinearModel
 from thinc.neural.ops import NumpyOps, CupyOps
 from thinc.neural.util import get_array_module, copy_array
@@ -99,6 +99,29 @@ def _preprocess_doc_bigrams(docs, drop=0.):
     keys = ops.xp.concatenate(keys)
     vals = ops.asarray(ops.xp.concatenate(vals), dtype='f')
     return (keys, vals, lengths), None
+
+
+
+
+def HistoryFeatures(nr_class, hist_size=8, nr_dim=8):
+    '''Wrap a model, adding features representing action history.'''
+    embed = Embed(nr_dim, nr_dim, nr_class)
+    ops = embed.ops
+    def add_history_fwd(vectors_hists, drop=0.):
+        vectors, hist_ids = vectors_hists
+        flat_hists, bp_hists = embed.begin_update(hist_ids.flatten(), drop=drop)
+        hists = flat_hists.reshape((hist_ids.shape[0],
+                                    hist_ids.shape[1] * flat_hists.shape[1]))
+        outputs = ops.xp.hstack((vectors, hists))
+
+        def add_history_bwd(d_outputs, sgd=None):
+            d_vectors = d_outputs[:, :vectors.shape[1]]
+            d_hists = d_outputs[:, vectors.shape[1]:]
+            bp_hists(d_hists.reshape((d_hists.shape[0]*hist_size,
+                int(d_hists.shape[1]/hist_size))), sgd=sgd)
+            return embed.ops.xp.ascontiguousarray(d_vectors)
+        return outputs, add_history_bwd
+    return wrap(add_history_fwd, embed)
 
 
 @describe.on_data(_set_dimensions_if_needed,
