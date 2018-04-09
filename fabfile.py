@@ -110,13 +110,13 @@ def conll17(treebank_dir, experiment_dir, config, corpus=''):
     if corpus:
         corpora = [corpus]
     else:
-        corpora = ['UD_French', 'UD_English', 'UD_German', 'UD_Spanish', 'UD_Chinese', 'UD_Japanese', 'UD_Vietnamese', 'UD_Persian',
+        corpora = ['UD_English', 'UD_Chinese', 'UD_German', 'UD_French', 'UD_Spanish', 'UD_Japanese', 'UD_Vietnamese', 'UD_Persian',
                     'UD_Indonesian', 'UD_Hindi', 'UD_Danish', 'UD_Russian']
 
     local('cp {config} {experiment_dir}/config.json'.format(config=config, experiment_dir=experiment_dir))
     with virtualenv(VENV_DIR) as venv_local:
         for corpus in corpora:
-            venv_local('spacy ud-train {treebank_dir} {experiment_dir} {config} {corpus} -n 1000'.format(
+            venv_local('spacy ud-train {treebank_dir} {experiment_dir} {config} {corpus}'.format(
                 treebank_dir=treebank_dir, experiment_dir=experiment_dir, config=config, corpus=corpus))
             venv_local('spacy ud-run-test {test_data_dir} {experiment_dir} {corpus}'.format(
                 test_data_dir=test_data_dir, experiment_dir=experiment_dir, config=config, corpus=corpus))
