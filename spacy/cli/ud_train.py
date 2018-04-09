@@ -205,7 +205,9 @@ def evaluate(nlp, text_loc, gold_loc, sys_loc, limit=None):
         texts = split_text(text_file.read())
         docs = list(nlp.pipe(texts))
     with sys_loc.open('w', encoding='utf8') as out_file:
-        write_conllu(docs, out_file)
+        success = write_conllu(docs, out_file)
+    if not success:
+        return None, None
     with gold_loc.open('r', encoding='utf8') as gold_file:
         gold_ud = conll17_ud_eval.load_conllu(gold_file)
         with sys_loc.open('r', encoding='utf8') as sys_file:
@@ -238,13 +240,14 @@ def write_conllu(docs, file_):
                 if word.head.i == word.i and word.dep_ == 'ROOT':
                     break
             else:
-                print("Rootless sentence!")
-                print(sent)
-                print(i)
-                for w in sent:
-                    print(w.i, w.text, w.head.text, w.head.i, w.dep_)
-                raise ValueError
-
+                #print("Rootless sentence!")
+                #print(sent)
+                #print(i)
+                #for w in sent:
+                #    print(w.i, w.text, w.head.text, w.head.i, w.dep_)
+                #raise ValueError
+                return False
+        return True
 
 def _get_token_conllu(token, k, sent_len):
     if token.check_morph(Fused_begin) and (k+1 < sent_len):
@@ -609,7 +612,7 @@ def main(ud_dir, output_dir, config, corpus, limit=0, use_gpu=-1):
             training_log.append(print_progress(i, losses, dev_scores))
             if parsed_docs is not None:
                 _render_parses(i, parsed_docs[:50]) 
-            if dev_scores['LAS'].f1 >= best_score:
+            if dev_scores is not None and dev_scores['LAS'].f1 >= best_score:
                 nlp.meta['log'] = training_log
                 nlp.to_disk(model_output)
 
