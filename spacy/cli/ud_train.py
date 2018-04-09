@@ -247,7 +247,7 @@ def write_conllu(docs, file_):
                 #    print(w.i, w.text, w.head.text, w.head.i, w.dep_)
                 #raise ValueError
                 return False
-        return True
+    return True
 
 def _get_token_conllu(token, k, sent_len):
     if token.check_morph(Fused_begin) and (k+1 < sent_len):
