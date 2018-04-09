@@ -48,6 +48,20 @@ class JapaneseCharacterSegmenter(object):
             spaces.extend([False]*len(token.text))
             spaces[-1] = bool(token.whitespace_)
         return Doc(self.vocab, words=words, spaces=spaces)
+    
+    # add dummy methods for to_bytes, from_bytes, to_disk and from_disk to
+    # allow serialization (see #1557)
+    def to_bytes(self, **exclude):
+        return b''
+
+    def from_bytes(self, bytes_data, **exclude):
+        return self
+
+    def to_disk(self, path, **exclude):
+        return None
+
+    def from_disk(self, path, **exclude):
+        return self
 
 
 class JapaneseDefaults(Language.Defaults):
