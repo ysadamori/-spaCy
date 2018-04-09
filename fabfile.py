@@ -93,6 +93,14 @@ def train():
 
 
 def conll17(treebank_dir, experiment_dir, config, corpus=''):
+    is_clean = local('git status --porcelain', capture=True)
+    if not is_clean:
+        print("Repository is not clean")
+        sys.exit(1)
+    sha = local('git rev-parse --short HEAD', capture=True)
+    experiment_dir = Path(experiment_dir) / sha
+    if not experiment_dir.exists():
+        experiment_dir.mkdir()
     test_data_dir = Path(treebank_dir) / 'ud-test-v2.0-conll2017'
     assert test_data_dir.exists()
     assert test_data_dir.is_dir()
@@ -101,7 +109,10 @@ def conll17(treebank_dir, experiment_dir, config, corpus=''):
     else:
         corpora = ['UD_English', 'UD_French', 'UD_German', 'UD_Spanish', 'UD_Chinese', 'UD_Japanese', 'UD_Vietnamese', 'UD_Persian']
 
+    local('cp {config} {experiment_dir}/config.json'.format(config=config, experiment_dir=experiment_dir))
     with virtualenv(VENV_DIR) as venv_local:
         for corpus in corpora:
-            venv_local(f'spacy ud-train {treebank_dir} {experiment_dir} {config} {corpus}')
-            venv_local(f'spacy ud-run-test {test_data_dir} {experiment_dir} {corpus}')
+            venv_local('spacy ud-train {treebank_dir} {experiment_dir} {config} {corpus} -n 10'.format(
+                treebank_dir=treebank_dir, experiment_dir=experiment_dir, config=config, corpus=corpus))
+            venv_local('spacy ud-run-test {test_data_dir} {experiment_dir} {corpus}'.format(
+                treebank_dir=treebank_dir, experiment_dir=experiment_dir, config=config, corpus=corpus))
