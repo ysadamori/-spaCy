@@ -398,9 +398,9 @@ cdef class Break:
             return 0
         elif st.B(0).j != 0:
             return 0
-        #elif st.B_(0).l_kids != 0: # Testing -- hack
-        #    # If we allow left dependents, we need to check l_edge is not split
-        #    return 0
+        elif st.B_(0).l_kids != 0: # Testing -- hack
+            # If we allow left dependents, we need to check l_edge is not split
+            return 0
         else:
             return 1
 
@@ -898,8 +898,8 @@ cdef class ArcEager(TransitionSystem):
 
     def get_beam_annot(self, Beam beam):
         length = (<StateC*>beam.at(0)).length
-        heads = [{} for _ in range(length)]
-        deps = [{} for _ in range(length)]
+        heads = [{} for _ in range(length*MAX_SPLIT)]
+        deps = [{} for _ in range(length*MAX_SPLIT)]
         probs = beam.probs
         for i in range(beam.size):
             state = <StateC*>beam.at(i)

@@ -80,6 +80,7 @@ def read_data(nlp, conllu_file, text_file, raw_text=True, oracle_segments=False,
                         # End fused region
                         sent['words'].extend(guess_fused_orths(fused_key, fused_orths))
                         fused_ids = set()
+                        fused_orths = []
                     # Begin fused region
                     inside_fused = True
                     fuse_start, fuse_end = id_.split('-')
@@ -98,6 +99,7 @@ def read_data(nlp, conllu_file, text_file, raw_text=True, oracle_segments=False,
                         # End fused region
                         sent['words'].extend(guess_fused_orths(fused_key, fused_orths))
                     fused_orths = []
+                    fused_ids = set()
                     inside_fused = False
                     sent['tokens'].append(word)
                     sent['words'].append(word)
@@ -203,7 +205,9 @@ def evaluate(nlp, text_loc, gold_loc, sys_loc, limit=None):
         texts = split_text(text_file.read())
         docs = list(nlp.pipe(texts))
     with sys_loc.open('w', encoding='utf8') as out_file:
-        write_conllu(docs, out_file)
+        success = write_conllu(docs, out_file)
+    if not success:
+        return None, None
     with gold_loc.open('r', encoding='utf8') as gold_file:
         gold_ud = conll17_ud_eval.load_conllu(gold_file)
         with sys_loc.open('r', encoding='utf8') as sys_file:
@@ -236,13 +240,14 @@ def write_conllu(docs, file_):
                 if word.head.i == word.i and word.dep_ == 'ROOT':
                     break
             else:
-                print("Rootless sentence!")
-                print(sent)
-                print(i)
-                for w in sent:
-                    print(w.i, w.text, w.head.text, w.head.i, w.dep_)
-                raise ValueError
-
+                #print("Rootless sentence!")
+                #print(sent)
+                #print(i)
+                #for w in sent:
+                #    print(w.i, w.text, w.head.text, w.head.i, w.dep_)
+                #raise ValueError
+                return False
+        return True
 
 def _get_token_conllu(token, k, sent_len):
     if token.check_morph(Fused_begin) and (k+1 < sent_len):
@@ -315,6 +320,7 @@ def print_progress(itn, losses, ud_scores):
         '{words:.1f}',
     ))
     print(tpl.format(itn, **fields))
+    return fields
 
 #def get_sent_conllu(sent, sent_id):
 #    lines = ["# sent_id = {sent_id}".format(sent_id=sent_id)]
@@ -395,6 +401,7 @@ def load_nlp(corpus, config):
     nlp = spacy.blank(lang)
     if config.vectors:
         nlp.vocab.from_disk(Path(config.vectors) / 'vocab')
+    nlp.meta['treebank'] = corpus
     return nlp
 
 def initialize_pipeline(nlp, docs, golds, config, device):
@@ -455,9 +462,6 @@ def extract_tokenizer_exceptions(paths, min_freq=20):
             subtoken['SENT_START'] = -1
         exc[word] = analysis
     all_exceptions.sort(reverse=True)
-    for freq, word, subtoken_norms in all_exceptions:
-        if freq >= min_freq:
-            print(freq, word, '->', ' '.join(subtoken_norms))
     return exc
 
 
@@ -485,7 +489,7 @@ def guess_fused_orths(word, ud_forms):
         output = [first]
         remain = word[len(first):]
         for i in range(1, len(ud_forms)):
-            assert remain
+            #assert remain, (word, ud_forms)
             output.append(remain[:1])
             remain = remain[1:]
         assert len(remain) == 0, (word, output, remain)
@@ -527,6 +531,7 @@ class Dataset(object):
         if self.text is None:
             msg = "Could not find .txt file in {path} for {section}"
         self.lang = self.conllu.parts[-1].split('-')[0].split('_')[0]
+        self.treebank = self.conllu.parts[-1].split('-')[0]
 
 
 class TreebankPaths(object):
@@ -534,18 +539,19 @@ class TreebankPaths(object):
         self.train = Dataset(ud_path / treebank, 'train')
         self.dev = Dataset(ud_path / treebank, 'dev')
         self.lang = self.train.lang
+        self.treebank = self.train.treebank
 
 
 @plac.annotations(
     ud_dir=("Path to Universal Dependencies corpus", "positional", None, Path),
     corpus=("UD corpus to train and evaluate on, e.g. en, es_ancora, etc",
             "positional", None, str),
-    parses_dir=("Directory to write the development parses", "positional", None, Path),
+    output_dir=("Directory to write the development parses", "positional", None, Path),
     config=("Path to json formatted config file", "positional"),
     limit=("Size limit", "option", "n", int),
-    use_gpu=("Use GPU", "option", "g", int)
+    use_gpu=("Use GPU", "option", "g", int),
 )
-def main(ud_dir, parses_dir, config, corpus, limit=0, use_gpu=-1):
+def main(ud_dir, output_dir, config, corpus, limit=0, use_gpu=-1):
     spacy.util.fix_random_seed()
     lang.zh.Chinese.Defaults.use_jieba = False
     lang.ja.Japanese.Defaults.use_janome = False
@@ -553,10 +559,13 @@ def main(ud_dir, parses_dir, config, corpus, limit=0, use_gpu=-1):
 
     config = Config.load(config)
     paths = TreebankPaths(ud_dir, corpus)
-    if not (parses_dir / corpus).exists():
-        (parses_dir / corpus).mkdir()
+    model_output = output_dir / corpus / 'best-model'
+    if not (output_dir / corpus).exists():
+        (output_dir / corpus).mkdir()
+    if not model_output.exists():
+        model_output.mkdir()
     print("Train and evaluate", corpus, "using lang", paths.lang)
-    nlp = load_nlp(paths.lang, config)
+    nlp = load_nlp(paths.treebank, config)
     tokenizer_exceptions = extract_tokenizer_exceptions(paths)
     for orth, subtokens in tokenizer_exceptions.items():
         nlp.tokenizer.add_special_case(orth, subtokens)
@@ -566,8 +575,13 @@ def main(ud_dir, parses_dir, config, corpus, limit=0, use_gpu=-1):
 
     optimizer = initialize_pipeline(nlp, docs, golds, config, use_gpu)
 
-    batch_sizes = compounding(config.batch_size/10, config.batch_size, 1.001)
-    max_doc_length = compounding(5., 20., 1.001)
+    #batch_sizes = compounding(config.batch_size/10, config.batch_size, 1.001)
+    #max_doc_length = compounding(5., 20., 1.001)
+    batch_sizes = compounding(config.batch_size, config.batch_size, 1.001)
+    max_doc_length = compounding(10., 10., 1.001)
+ 
+    best_score = 0.0
+    training_log = []
     for i in range(config.nr_epoch):
         docs, golds = read_data(nlp, paths.train.conllu.open(), paths.train.text.open(),
                                 max_doc_length=max_doc_length, limit=limit)
@@ -588,17 +602,19 @@ def main(ud_dir, parses_dir, config, corpus, limit=0, use_gpu=-1):
                 nlp.update(batch_docs, batch_gold, sgd=optimizer,
                            drop=config.dropout, losses=losses)
         
-        out_path = parses_dir / corpus / 'epoch-{i}.conllu'.format(i=i)
+        parses_path = output_dir / corpus / 'epoch-{i}.conllu'.format(i=i)
         with nlp.use_params(optimizer.averages):
             try:
-                parsed_docs, scores = evaluate(nlp, paths.dev.text, paths.dev.conllu, out_path)
+                parsed_docs, dev_scores = evaluate(nlp, paths.dev.text, paths.dev.conllu, parses_path)
             except RecursionError:
-                scores = None
+                dev_scores = None
                 parsed_docs = None
-
-            print_progress(i, losses, scores)
+            training_log.append(print_progress(i, losses, dev_scores))
             if parsed_docs is not None:
                 _render_parses(i, parsed_docs[:50]) 
+            if dev_scores is not None and dev_scores['LAS'].f1 >= best_score:
+                nlp.meta['log'] = training_log
+                nlp.to_disk(model_output)
 
 
 def _render_parses(i, to_render):
