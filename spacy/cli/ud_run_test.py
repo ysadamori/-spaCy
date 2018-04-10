@@ -48,10 +48,47 @@ def split_text(text):
 # Evaluation #
 ##############
 
+def read_conllu(file_):
+    docs = []
+    sent = []
+    doc = []
+    for line in file_:
+        if line.startswith('# newdoc'):
+            if doc:
+                docs.append(doc)
+            doc = []
+        elif line.startswith('#'):
+            continue
+        elif not line.strip():
+            if sent:
+                doc.append(sent)
+            sent = []
+        else:
+            sent.append(list(line.strip().split('\t')))
+            if len(sent[-1]) != 10:
+                print(repr(line))
+                raise ValueError
+    if sent:
+        doc.append(sent)
+    if doc:
+        docs.append(doc)
+    return docs
+
+
 def evaluate(nlp, text_loc, gold_loc, sys_loc, limit=None):
-    with text_loc.open('r', encoding='utf8') as text_file:
-        texts = split_text(text_file.read())
-        docs = list(nlp.pipe(texts))
+    if text_loc.parts[-1].endswith('.conllu'):
+        docs = []
+        with text_loc.open() as file_:
+            for conllu_doc in read_conllu(file_):
+                for conllu_sent in conllu_doc:
+                    words = [line[1] for line in conllu_sent]
+                    docs.append(Doc(nlp.vocab, words=words))
+        for name, component in nlp.pipeline:
+            docs = list(component.pipe(docs))
+    else:
+        with text_loc.open('r', encoding='utf8') as text_file:
+            texts = split_text(text_file.read())
+            docs = list(nlp.pipe(texts))
     with sys_loc.open('w', encoding='utf8') as out_file:
         write_conllu(docs, out_file)
     with gold_loc.open('r', encoding='utf8') as gold_file:
@@ -163,7 +200,7 @@ def guess_fused_orths(word, ud_forms):
 
 
 
-def print_results(ud_scores):
+def print_results(name, ud_scores):
     fields = {}
     if ud_scores is not None:
         fields.update({
@@ -181,9 +218,8 @@ def print_results(ud_scores):
             'uas': 0.0,
             'las': 0.0
         })
-    header = ['LAS', 'UAS', 'TAG', 'SENT', 'WORD']
-    print('\t'.join(header))
     tpl = '\t'.join((
+        name,
         '{las:.1f}',
         '{uas:.1f}',
         '{tags:.1f}',
@@ -251,24 +287,28 @@ def main(test_data_dir, experiment_dir, corpus):
     nlp = load_nlp(experiment_dir, corpus)
     
     treebank_code = nlp.meta['treebank']
-    for section in ('dev', 'test'):
+    for section in ('test', 'dev'):
         if section == 'dev':
             section_dir = 'conll17-ud-development-2017-03-19'
         else:
             section_dir = 'conll17-ud-test-2017-05-09'
-        print(section)
         text_path = test_data_dir / 'input' / section_dir / (treebank_code+'.txt')
+        udpipe_path = test_data_dir / 'input' / section_dir / (treebank_code+'-udpipe.conllu')
         gold_path = test_data_dir / 'gold' / section_dir / (treebank_code+'.conllu')
-        output_path = experiment_dir / corpus / '{section}.conllu'.format(section=section)
-        try:
-            parsed_docs, test_scores = evaluate(nlp, text_path, gold_path, output_path)
-        except RecursionError:
-            test_scores = None
-            parsed_docs = None
-        accuracy = print_results(test_scores)
-        acc_path = experiment_dir / corpus / '{section}-accuracy.json'.format(section=section)
-        with open(acc_path, 'w') as file_:
-            file_.write(json.dumps(accuracy, indent=2))
+
+        header = [section, 'LAS', 'UAS', 'TAG', 'SENT', 'WORD']
+        print('\t'.join(header))
+        inputs = {'gold': gold_path, 'udp': udpipe_path, 'raw': text_path}
+        for input_type in ('udp', 'raw'):
+            input_path = inputs[input_type]
+            output_path = experiment_dir / corpus / '{section}.conllu'.format(section=section)
+
+            parsed_docs, test_scores = evaluate(nlp, input_path, gold_path, output_path)
+
+            accuracy = print_results(input_type, test_scores)
+            acc_path = experiment_dir / corpus / '{section}-accuracy.json'.format(section=section)
+            with open(acc_path, 'w') as file_:
+                file_.write(json.dumps(accuracy, indent=2))
 
 
 if __name__ == '__main__':
