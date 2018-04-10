@@ -119,7 +119,10 @@ def read_data(nlp, conllu_file, text_file, raw_text=True, oracle_segments=False,
                                                        sent['deps'])
             if oracle_segments:
                 docs.append(Doc(nlp.vocab, words=sent['words'], spaces=sent['spaces']))
-                golds.append(GoldParse(docs[-1], **sent))
+                golds.append(GoldParse(docs[-1], words=sent['words'],
+                                       heads=sent['heads'],
+                                       tags=sent['tags'], deps=sent['deps'],
+                                       entities=sent['entities']))
 
             sent_annots.append(sent)
             if raw_text and next_max_doc_length and len(sent_annots) >= next_max_doc_length:
@@ -200,10 +203,20 @@ def golds_to_gold_tuples(docs, golds):
 # Evaluation #
 ##############
 
-def evaluate(nlp, text_loc, gold_loc, sys_loc, limit=None):
-    with text_loc.open('r', encoding='utf8') as text_file:
-        texts = split_text(text_file.read())
-        docs = list(nlp.pipe(texts))
+def evaluate(nlp, text_loc, gold_loc, sys_loc, limit=None, oracle_segments=False):
+    if oracle_segments:
+        docs = []
+        with gold_loc.open() as file_:
+            for conllu_doc in read_conllu(file_):
+                for conllu_sent in conllu_doc:
+                    words = [line[1] for line in conllu_sent]
+                    docs.append(Doc(nlp.vocab, words=words))
+        for name, component in nlp.pipeline:
+            docs = list(component.pipe(docs))
+    else:
+        with text_loc.open('r', encoding='utf8') as text_file:
+            texts = split_text(text_file.read())
+            docs = list(nlp.pipe(texts))
     with sys_loc.open('w', encoding='utf8') as out_file:
         success = write_conllu(docs, out_file)
     if not success:
@@ -557,10 +570,12 @@ class TreebankPaths(object):
     config=("Path to json formatted config file", "positional"),
     limit=("Size limit", "option", "n", int),
     use_gpu=("Use GPU", "option", "g", int),
+    use_oracle_segments=("Use oracle segments", "flag", "G", int),
     vectors_dir=("Path to directory with pre-trained vectors, named e.g. en/",
                  "option", "v", Path),
 )
-def main(ud_dir, output_dir, config, corpus, vectors_dir=None, limit=0, use_gpu=-1):
+def main(ud_dir, output_dir, config, corpus, vectors_dir=None,
+         limit=0, use_gpu=-1, use_oracle_segments=False):
     spacy.util.fix_random_seed()
     lang.zh.Chinese.Defaults.use_jieba = False
     lang.ja.Japanese.Defaults.use_janome = False
@@ -591,8 +606,9 @@ def main(ud_dir, output_dir, config, corpus, vectors_dir=None, limit=0, use_gpu=
     training_log = []
     for i in range(config.nr_epoch):
         docs, golds = read_data(nlp, paths.train.conllu.open(), paths.train.text.open(),
-                                max_doc_length=max_doc_length, limit=limit)
-        docs = [nlp.make_doc(doc.text) for doc in docs]
+                                max_doc_length=max_doc_length, limit=limit,
+                                oracle_segments=use_oracle_segments,
+                                raw_text=not use_oracle_segments)
         Xs = list(zip(docs, golds))
         random.shuffle(Xs)
         batches = minibatch_by_words(Xs, size=batch_sizes)
@@ -612,7 +628,8 @@ def main(ud_dir, output_dir, config, corpus, vectors_dir=None, limit=0, use_gpu=
         parses_path = output_dir / corpus / 'epoch-{i}.conllu'.format(i=i)
         with nlp.use_params(optimizer.averages):
             try:
-                parsed_docs, dev_scores = evaluate(nlp, paths.dev.text, paths.dev.conllu, parses_path)
+                parsed_docs, dev_scores = evaluate(nlp, paths.dev.text, paths.dev.conllu, parses_path,
+                                                   oracle_segments=use_oracle_segments)
             except RecursionError:
                 dev_scores = None
                 parsed_docs = None
