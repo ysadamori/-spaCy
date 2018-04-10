@@ -93,7 +93,7 @@ def train():
         venv_local('spacy train {args}'.format(args=args))
 
 
-def conll17(treebank_dir, experiment_dir, config, corpus=''):
+def conll17(treebank_dir, experiment_dir, vectors_dir, config, corpus=''):
     is_not_clean = local('git status --porcelain', capture=True)
     if is_not_clean:
         print("Repository is not clean")
@@ -115,7 +115,7 @@ def conll17(treebank_dir, experiment_dir, config, corpus=''):
     local('cp {config} {experiment_dir}/config.json'.format(config=config, experiment_dir=experiment_dir))
     with virtualenv(VENV_DIR) as venv_local:
         for corpus in corpora:
-            venv_local('spacy ud-train {treebank_dir} {experiment_dir} {config} {corpus}'.format(
+            venv_local('spacy ud-train {treebank_dir} {vectors_dir} {experiment_dir} {config} {corpus}'.format(
                 treebank_dir=treebank_dir, experiment_dir=experiment_dir, config=config, corpus=corpus))
             venv_local('spacy ud-run-test {test_data_dir} {experiment_dir} {corpus}'.format(
                 test_data_dir=test_data_dir, experiment_dir=experiment_dir, config=config, corpus=corpus))
