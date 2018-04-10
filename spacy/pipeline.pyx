@@ -11,6 +11,7 @@ import ujson
 import msgpack
 
 from thinc.api import chain
+from thinc.t2t import ExtractWindow
 from thinc.v2v import Affine, SELU, Softmax
 from thinc.t2v import Pooling, max_pool, mean_pool
 from thinc.neural.util import to_categorical, copy_array
@@ -261,152 +262,6 @@ def _load_cfg(path):
         return {}
 
 
-class Tensorizer(Pipe):
-    """Assign position-sensitive vectors to tokens, using a CNN or RNN."""
-    name = 'tensorizer'
-
-    @classmethod
-    def Model(cls, output_size=300, input_size=384, **cfg):
-        """Create a new statistical model for the class.
-
-        width (int): Output size of the model.
-        embed_size (int): Number of vectors in the embedding table.
-        **cfg: Config parameters.
-        RETURNS (Model): A `thinc.neural.Model` or similar instance.
-        """
-        model = chain(
-                    SELU(output_size, input_size),
-                    SELU(output_size, output_size),
-                    zero_init(Affine(output_size, output_size)))
-        return model
-
-    def __init__(self, vocab, model=True, **cfg):
-        """Construct a new statistical model. Weights are not allocated on
-        initialisation.
-
-        vocab (Vocab): A `Vocab` instance. The model must share the same
-            `Vocab` instance with the `Doc` objects it will process.
-        model (Model): A `Model` instance or `True` allocate one later.
-        **cfg: Config parameters.
-
-        EXAMPLE:
-            >>> from spacy.pipeline import TokenVectorEncoder
-            >>> tok2vec = TokenVectorEncoder(nlp.vocab)
-            >>> tok2vec.model = tok2vec.Model(128, 5000)
-        """
-        self.vocab = vocab
-        self.model = model
-        self.input_models = []
-        self.cfg = dict(cfg)
-        self.cfg['pretrained_dims'] = self.vocab.vectors.data.shape[1]
-        self.cfg.setdefault('cnn_maxout_pieces', 3)
-
-    def __call__(self, doc):
-        """Add context-sensitive vectors to a `Doc`, e.g. from a CNN or LSTM
-        model. Vectors are set to the `Doc.tensor` attribute.
-
-        docs (Doc or iterable): One or more documents to add vectors to.
-        RETURNS (dict or None): Intermediate computations.
-        """
-        tokvecses = self.predict([doc])
-        self.set_annotations([doc], tokvecses)
-        return doc
-
-    def pipe(self, stream, batch_size=128, n_threads=-1):
-        """Process `Doc` objects as a stream.
-
-        stream (iterator): A sequence of `Doc` objects to process.
-        batch_size (int): Number of `Doc` objects to group.
-        n_threads (int): Number of threads.
-        YIELDS (iterator): A sequence of `Doc` objects, in order of input.
-        """
-        for docs in cytoolz.partition_all(batch_size, stream):
-            docs = list(docs)
-            tensors = self.predict(docs)
-            self.set_annotations(docs, tensors)
-            yield from docs
-
-    def predict(self, docs):
-        """Return a single tensor for a batch of documents.
-
-        docs (iterable): A sequence of `Doc` objects.
-        RETURNS (object): Vector representations for each token in the docs.
-        """
-        inputs = self.model.ops.flatten([doc.tensor for doc in docs])
-        outputs = self.model(inputs)
-        return self.model.ops.unflatten(outputs, [len(d) for d in docs])
-
-    def set_annotations(self, docs, tensors):
-        """Set the tensor attribute for a batch of documents.
-
-        docs (iterable): A sequence of `Doc` objects.
-        tensors (object): Vector representation for each token in the docs.
-        """
-        for doc, tensor in zip(docs, tensors):
-            assert tensor.shape[0] == len(doc)
-            doc.tensor = tensor
-
-    def update(self, docs, golds, state=None, drop=0., sgd=None, losses=None):
-        """Update the model.
-
-        docs (iterable): A batch of `Doc` objects.
-        golds (iterable): A batch of `GoldParse` objects.
-        drop (float): The droput rate.
-        sgd (callable): An optimizer.
-        RETURNS (dict): Results from the update.
-        """
-        if isinstance(docs, Doc):
-            docs = [docs]
-        inputs = []
-        bp_inputs = []
-        for tok2vec in self.input_models:
-            tensor, bp_tensor = tok2vec.begin_update(docs, drop=drop)
-            inputs.append(tensor)
-            bp_inputs.append(bp_tensor)
-        inputs = self.model.ops.xp.hstack(inputs)
-        scores, bp_scores = self.model.begin_update(inputs, drop=drop)
-        loss, d_scores = self.get_loss(docs, golds, scores)
-        d_inputs = bp_scores(d_scores, sgd=sgd)
-        d_inputs = self.model.ops.xp.split(d_inputs, len(self.input_models), axis=1)
-        for d_input, bp_input in zip(d_inputs, bp_inputs):
-            bp_input(d_input, sgd=sgd)
-        if losses is not None:
-            losses.setdefault(self.name, 0.)
-            losses[self.name] += loss
-        return loss
-
-    def get_loss(self, docs, golds, prediction):
-        target = []
-        i = 0
-        for doc in docs:
-            vectors = self.model.ops.xp.vstack([w.vector for w in doc])
-            target.append(vectors)
-        target = self.model.ops.xp.vstack(target)
-        d_scores = (prediction - target) / prediction.shape[0]
-        loss = (d_scores**2).sum()
-        return loss, d_scores
-
-    def begin_training(self, gold_tuples=lambda: [], pipeline=None, sgd=None,
-                        **kwargs):
-        """Allocate models, pre-process training data and acquire an
-        optimizer.
-
-        gold_tuples (iterable): Gold-standard training data.
-        pipeline (list): The pipeline the model is part of.
-        """
-        for name, model in pipeline:
-            if getattr(model, 'tok2vec', None):
-                self.input_models.append(model.tok2vec)
-        if self.model is True:
-            self.cfg['input_size'] = 384
-            self.cfg['output_size'] = 300
-            self.model = self.Model(**self.cfg)
-        link_vectors_to_models(self.vocab)
-        if sgd is None:
-            sgd = self.create_optimizer()
-        return sgd
-
-
 class Tagger(Pipe):
     name = 'tagger'
 
@@ -655,6 +510,94 @@ class Tagger(Pipe):
         ))
         util.from_disk(path, deserialize, exclude)
         return self
+
+
+class MultitaskVectorObjective(Pipe):
+    name = 'vector_objective'
+    @classmethod
+    def Model(cls, **cfg):
+        """Create a new statistical model for the class.
+
+        width (int): Output size of the model.
+        embed_size (int): Number of vectors in the embedding table.
+        **cfg: Config parameters.
+        RETURNS (Model): A `thinc.neural.Model` or similar instance.
+        """
+        input_size = cfg['pretrained_dims']
+        output_size = cfg['output_size']
+        model = chain(zero_init(Affine(output_size, input_size)))
+        return model
+
+    def __init__(self, vocab, model=True, **cfg):
+        self.vocab = vocab
+        self.model = model
+        self._cnn = ExtractWindow(nW=1)
+        self.cfg = dict(cfg)
+        self.cfg.setdefault('pretrained_dims',
+                            self.vocab.vectors.data.shape[1])
+
+    def set_annotations(self, docs, _, tensors=None):
+        pass
+
+    def update(self, docs, golds, state=None, drop=0., sgd=None, losses=None):
+        """Update the model.
+
+        docs (iterable): A batch of `Doc` objects.
+        golds (iterable): A batch of `GoldParse` objects.
+        drop (float): The droput rate.
+        sgd (callable): An optimizer.
+        RETURNS (dict): Results from the update.
+        """
+        if isinstance(docs, Doc):
+            docs = [docs]
+        inputs = []
+        bp_inputs = []
+        for tok2vec in self.input_models:
+            tensor, bp_tensor = tok2vec.begin_update(docs, drop=drop)
+            inputs.append(tensor)
+            bp_inputs.append(bp_tensor)
+        inputs = self.model.ops.xp.hstack(inputs)
+        scores, bp_scores = self.model.begin_update(inputs, drop=drop)
+        loss, d_scores = self.get_loss(docs, golds, scores)
+        d_inputs = bp_scores(d_scores, sgd=sgd)
+        d_inputs = self.model.ops.xp.split(d_inputs, len(self.input_models), axis=1)
+        for d_input, bp_input in zip(d_inputs, bp_inputs):
+            bp_input(d_input, sgd=sgd)
+        if losses is not None:
+            losses.setdefault(self.name, 0.)
+            losses[self.name] += loss
+        return loss
+
+    def get_loss(self, docs, golds, prediction):
+        target = []
+        i = 0
+        for doc in docs:
+            vectors = self.model.ops.xp.vstack([w.vector for w in doc])
+            ngram = self._cnn(vectors)
+            target.append(ngram)
+        target = self.model.ops.xp.vstack(target)
+        d_scores = (prediction - target) / prediction.shape[0]
+        loss = (d_scores**2).sum()
+        return loss, d_scores
+
+    def begin_training(self, gold_tuples=lambda: [], pipeline=None, sgd=None,
+                       tok2vec=None, **kwargs):
+        """Allocate models, pre-process training data and acquire an
+        optimizer.
+
+        gold_tuples (iterable): Gold-standard training data.
+        pipeline (list): The pipeline the model is part of.
+        """
+        if self.model is True:
+            assert tok2vec
+            input_size = tok2vec.nO
+            self.cfg['input_size'] = input_size
+            self.cfg['output_size'] = self.vocab.vectors_length * 3
+            self.model = self.Model(**self.cfg)
+        link_vectors_to_models(self.vocab)
+        if sgd is None:
+            sgd = self.create_optimizer()
+        return sgd
 
 
 class MultitaskObjective(Tagger):
@@ -1005,7 +948,10 @@ cdef class DependencyParser(Parser):
         return [nonproj.deprojectivize]
 
     def add_multitask_objective(self, target):
-        labeller = MultitaskObjective(self.vocab, target=target)
+        if target == 'vectors':
+            labeller = MultitaskVectorObjective(self.vocab)
+        else:
+            labeller = MultitaskObjective(self.vocab, target=target)
         self._multitasks.append(labeller)
 
     def init_multitask_objectives(self, get_gold_tuples, pipeline, sgd=None, **cfg):
