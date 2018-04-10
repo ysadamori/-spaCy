@@ -15,7 +15,7 @@ from thinc.neural.optimizers import Adam
 from .tokenizer import Tokenizer
 from .vocab import Vocab
 from .lemmatizer import Lemmatizer
-from .pipeline import DependencyParser, Tensorizer, Tagger, EntityRecognizer
+from .pipeline import DependencyParser, Tagger, EntityRecognizer
 from .pipeline import SimilarityHook, TextCategorizer, SentenceSegmenter
 from .pipeline import merge_noun_chunks, merge_entities, merge_subtokens
 from .compat import json_dumps, izip, basestring_
@@ -99,7 +99,7 @@ class Language(object):
 
     factories = {
         'tokenizer': lambda nlp: nlp.Defaults.create_tokenizer(nlp),
-        'tensorizer': lambda nlp, **cfg: Tensorizer(nlp.vocab, **cfg),
+        #'tensorizer': lambda nlp, **cfg: Tensorizer(nlp.vocab, **cfg),
         'tagger': lambda nlp, **cfg: Tagger(nlp.vocab, **cfg),
         'parser': lambda nlp, **cfg: DependencyParser(nlp.vocab, **cfg),
         'ner': lambda nlp, **cfg: EntityRecognizer(nlp.vocab, **cfg),
