@@ -690,10 +690,14 @@ class MultitaskObjective(Tagger):
     def make_dep(i, words, tags, heads, deps, ents):
         if deps[i] is None or heads[i] is None:
             return None
+        if isinstance(deps[i], list) or isinstance(deps[i], tuple):
+            return None
         return deps[i]
 
     @staticmethod
     def make_tag(i, words, tags, heads, deps, ents):
+        if isinstance(tags[i], list) or isinstance(tags[i], tuple):
+            return None
         return tags[i]
 
     @staticmethod
@@ -750,7 +754,7 @@ class MultitaskObjective(Tagger):
             while child is not None and heads[child] != child:
                 seen.add(child)
                 child = heads[child]
-                if not isinstance(child, int):
+                if not isinstance(child, int) or not isinstance(heads[child], int):
                     return None
             return child
 

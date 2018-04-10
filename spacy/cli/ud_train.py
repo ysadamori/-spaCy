@@ -396,11 +396,14 @@ Token.set_extension('inside_fused', default=False)
 ##################
 
 
-def load_nlp(corpus, config):
+def load_nlp(corpus, config, vectors=None):
     lang = corpus.split('_')[0]
     nlp = spacy.blank(lang)
     if config.vectors:
-        nlp.vocab.from_disk(Path(config.vectors) / 'vocab')
+        if not vectors:
+            raise ValueError("config asks for vectors, but no vectors "
+                             "directory set on command line (use -v)")
+        nlp.vocab.from_disk(Path(vectors) / corpus / 'vocab')
     nlp.meta['treebank'] = corpus
     return nlp
 
@@ -554,8 +557,10 @@ class TreebankPaths(object):
     config=("Path to json formatted config file", "positional"),
     limit=("Size limit", "option", "n", int),
     use_gpu=("Use GPU", "option", "g", int),
+    vectors_dir=("Path to directory with pre-trained vectors, named e.g. en/",
+                 "option", "v", Path),
 )
-def main(ud_dir, output_dir, config, corpus, limit=0, use_gpu=-1):
+def main(ud_dir, output_dir, config, corpus, vectors_dir=None, limit=0, use_gpu=-1):
     spacy.util.fix_random_seed()
     lang.zh.Chinese.Defaults.use_jieba = False
     lang.ja.Japanese.Defaults.use_janome = False
@@ -569,7 +574,7 @@ def main(ud_dir, output_dir, config, corpus, limit=0, use_gpu=-1):
     if not model_output.exists():
         model_output.mkdir()
     print("Train and evaluate", corpus, "using lang", paths.lang)
-    nlp = load_nlp(paths.treebank, config)
+    nlp = load_nlp(paths.treebank, config, vectors=vectors_dir)
     tokenizer_exceptions = extract_tokenizer_exceptions(paths)
     for orth, subtokens in tokenizer_exceptions.items():
         nlp.tokenizer.add_special_case(orth, subtokens)
