@@ -515,7 +515,7 @@ class Tagger(Pipe):
 class MultitaskVectorObjective(Pipe):
     name = 'vector_objective'
     @classmethod
-    def Model(cls, **cfg):
+    def Model(cls, tok2vec, **cfg):
         """Create a new statistical model for the class.
 
         width (int): Output size of the model.
@@ -523,9 +523,10 @@ class MultitaskVectorObjective(Pipe):
         **cfg: Config parameters.
         RETURNS (Model): A `thinc.neural.Model` or similar instance.
         """
-        input_size = cfg['pretrained_dims']
-        output_size = cfg['output_size']
-        model = chain(zero_init(Affine(output_size, input_size)))
+        output_size = cfg['pretrained_dims'] * 3
+        model = chain(
+            tok2vec,
+            zero_init(Affine(output_size, tok2vec.nO, drop_factor=0.0)))
         return model
 
     def __init__(self, vocab, model=True, **cfg):
@@ -550,25 +551,15 @@ class MultitaskVectorObjective(Pipe):
         """
         if isinstance(docs, Doc):
             docs = [docs]
-        inputs = []
-        bp_inputs = []
-        for tok2vec in self.input_models:
-            tensor, bp_tensor = tok2vec.begin_update(docs, drop=drop)
-            inputs.append(tensor)
-            bp_inputs.append(bp_tensor)
-        inputs = self.model.ops.xp.hstack(inputs)
-        scores, bp_scores = self.model.begin_update(inputs, drop=drop)
-        loss, d_scores = self.get_loss(docs, golds, scores)
-        d_inputs = bp_scores(d_scores, sgd=sgd)
-        d_inputs = self.model.ops.xp.split(d_inputs, len(self.input_models), axis=1)
-        for d_input, bp_input in zip(d_inputs, bp_inputs):
-            bp_input(d_input, sgd=sgd)
+        tensor, bp_scores = self.model.begin_update(docs, drop=drop)
+        loss, d_scores = self.get_loss(docs, golds, tensor)
+        bp_scores(d_scores, sgd=sgd)
         if losses is not None:
             losses.setdefault(self.name, 0.)
             losses[self.name] += loss
         return loss
 
-    def get_loss(self, docs, golds, prediction):
+    def get_loss(self, docs, _, prediction):
         target = []
         i = 0
         for doc in docs:
@@ -590,10 +581,7 @@ class MultitaskVectorObjective(Pipe):
         """
         if self.model is True:
             assert tok2vec
-            input_size = tok2vec.nO
-            self.cfg['input_size'] = input_size
-            self.cfg['output_size'] = self.vocab.vectors_length * 3
-            self.model = self.Model(**self.cfg)
+            self.model = self.Model(tok2vec, **self.cfg)
         link_vectors_to_models(self.vocab)
         if sgd is None:
             sgd = self.create_optimizer()
