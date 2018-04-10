@@ -204,9 +204,9 @@ def golds_to_gold_tuples(docs, golds):
 ##############
 
 def evaluate(nlp, text_loc, gold_loc, sys_loc, limit=None, oracle_segments=False):
-    if oracle_segments:
+    if text_loc.parts[-1].endswith('.conllu'):
         docs = []
-        with gold_loc.open() as file_:
+        with text_loc.open() as file_:
             for conllu_doc in read_conllu(file_):
                 for conllu_sent in conllu_doc:
                     words = [line[1] for line in conllu_sent]
@@ -628,8 +628,12 @@ def main(ud_dir, output_dir, config, corpus, vectors_dir=None,
         parses_path = output_dir / corpus / 'epoch-{i}.conllu'.format(i=i)
         with nlp.use_params(optimizer.averages):
             try:
-                parsed_docs, dev_scores = evaluate(nlp, paths.dev.text, paths.dev.conllu, parses_path,
-                                                   oracle_segments=use_oracle_segments)
+                if oracle_segments:
+                    parsed_docs, dev_scores = evaluate(nlp, paths.dev.conllu,
+                                                        paths.dev.conllu, parses_path)
+                else:
+                    parsed_docs, dev_scores = evaluate(nlp, paths.dev.text,
+                                                        paths.dev.conllu, parses_path)
             except RecursionError:
                 dev_scores = None
                 parsed_docs = None
