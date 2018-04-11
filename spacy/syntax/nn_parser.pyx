@@ -636,7 +636,7 @@ cdef class Parser:
             todo = [(st, gold) for (st, gold) in todo
                     if not st.is_final()]
             if losses is not None:
-                losses[self.name] += (d_scores**2).sum()
+                losses[self.name] += (d_scores**2).sum() / d_scores.shape[0]
             n_steps += 1
             if n_steps >= max_steps:
                 break
