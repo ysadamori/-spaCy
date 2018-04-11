@@ -116,6 +116,7 @@ def conll17(treebank_dir, experiment_dir, vectors_dir, config, corpus=''):
     with virtualenv(VENV_DIR) as venv_local:
         for corpus in corpora:
             venv_local('spacy ud-train {treebank_dir} {experiment_dir} {config} {corpus} -v {vectors_dir}'.format(
-                treebank_dir=treebank_dir, experiment_dir=experiment_dir, config=config, corpus=corpus))
+                treebank_dir=treebank_dir, experiment_dir=experiment_dir, config=config,
+                corpus=corpus, vectors_dir=vectors_dir))
             venv_local('spacy ud-run-test {test_data_dir} {experiment_dir} {corpus}'.format(
                 test_data_dir=test_data_dir, experiment_dir=experiment_dir, config=config, corpus=corpus))
