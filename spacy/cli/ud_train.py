@@ -60,12 +60,6 @@ def read_data(nlp, conllu_file, text_file, raw_text=True, oracle_segments=False,
     golds = []
     for doc_id, (text, cd) in enumerate(zip(paragraphs, conllu)):
         sent_annots = []
-        if max_doc_length is not None:
-            # Draw next doc length, and randomize it (but keep expectation)
-            next_max_doc_length = int(next(max_doc_length)) * random.random() * 2
-            next_max_doc_length = max(1, next_max_doc_length)
-        else:
-            next_max_doc_length = None
         for cs in cd:
             sent = defaultdict(list)
             fused_ids = set()
@@ -125,7 +119,7 @@ def read_data(nlp, conllu_file, text_file, raw_text=True, oracle_segments=False,
                                        entities=sent['entities']))
 
             sent_annots.append(sent)
-            if raw_text and next_max_doc_length and len(sent_annots) >= next_max_doc_length:
+            if raw_text and max_doc_length and len(sent_annots) >= max_doc_length:
                 doc, gold = _make_gold(nlp, None, sent_annots)
                 sent_annots = []
                 docs.append(doc)
@@ -606,12 +600,12 @@ def main(ud_dir, output_dir, config, corpus, vectors_dir=None,
     training_log = []
     for i in range(config.nr_epoch):
         docs, golds = read_data(nlp, paths.train.conllu.open(), paths.train.text.open(),
-                                max_doc_length=max_doc_length, limit=limit,
+                                max_doc_length=10, limit=limit,
                                 oracle_segments=use_oracle_segments,
                                 raw_text=not use_oracle_segments)
         Xs = list(zip(docs, golds))
         random.shuffle(Xs)
-        batches = minibatch_by_words(Xs, size=batch_sizes)
+        batches = minibatch_by_words(Xs, size=1000)
         losses = {}
         n_train_words = sum(len(doc) for doc in docs)
         with tqdm.tqdm(total=n_train_words, leave=False) as pbar:
@@ -628,7 +622,7 @@ def main(ud_dir, output_dir, config, corpus, vectors_dir=None,
         parses_path = output_dir / corpus / 'epoch-{i}.conllu'.format(i=i)
         with nlp.use_params(optimizer.averages):
             try:
-                if oracle_segments:
+                if use_oracle_segments:
                     parsed_docs, dev_scores = evaluate(nlp, paths.dev.conllu,
                                                         paths.dev.conllu, parses_path)
                 else:
