@@ -119,6 +119,17 @@ cdef cppclass StateC:
         if n == 2:
             ids[0] = this.B(0).i
             ids[1] = this.S(0).i
+        if n == 4:
+            ids[0] = this.B(0).i
+            ids[1] = this.S(0).i
+            ids[2] = this.S(1).i
+            ids[3] = this.S(2).i
+        if n == 5:
+            ids[0] = this.B(0).i
+            ids[1] = this.S(0).i
+            ids[2] = this.S(1).i
+            ids[3] = this.S(2).i
+            ids[4] = this.B(1).i
         if n == 8:
             ids[0] = this.B(0).i
             ids[1] = this.B(1).i
