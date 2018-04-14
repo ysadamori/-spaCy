@@ -3,6 +3,9 @@
 from __future__ import unicode_literals
 
 import numpy
+cimport numpy as np
+from murmurhash.mrmr cimport hash64
+from libc.stdint cimport uint64_t
 
 from ..tokens.doc cimport Doc
 
@@ -79,6 +82,37 @@ cdef class StateClass:
     @property
     def token_vector_lenth(self):
         return self.doc.tensor.shape[1]
+    
+    @property
+    def extra_features(self):
+        cdef uint64_t[10] values
+        values[0] = self.c.S_(0).dep
+        values[1] = self.c.S_(1).dep
+        values[2] = self.c.S_(2).dep
+        values[3] = self.c.L_(self.c.S(0), 1).dep
+        values[4] = self.c.L_(self.c.S(0), 2).dep
+        values[5] = self.c.R_(self.c.S(0), 1).dep
+        values[6] = self.c.R_(self.c.S(0), 2).dep
+        values[7] = self.c.L_(self.c.B(0), 1).dep
+        values[8] = self.c.L_(self.c.B(0), 2).dep
+        cdef int[3] status
+        status[0] = self.c.was_shifted(self.c.B(0))
+        status[1] = self.c.stack_depth()
+        status[2] = self.c.segment_length()
+        values[9] = hash64(status, sizeof(status), 0)
+        cdef np.ndarray features = numpy.zeros((10,), dtype='uint64')
+        features[0] = hash64(&values[0], sizeof(values[0]), 0)
+        features[1] = hash64(&values[1], sizeof(values[1]), 1)
+        features[2] = hash64(&values[2], sizeof(values[2]), 2)
+        features[3] = hash64(&values[3], sizeof(values[3]), 3)
+        features[4] = hash64(&values[4], sizeof(values[4]), 4)
+        features[5] = hash64(&values[5], sizeof(values[5]), 5)
+        features[6] = hash64(&values[6], sizeof(values[6]), 6)
+        features[7] = hash64(&values[7], sizeof(values[7]), 7)
+        features[8] = hash64(&values[8], sizeof(values[8]), 8)
+        features[9] = hash64(&values[9], sizeof(values[9]), 9)
+        return features
+
 
     @property
     def history(self):
