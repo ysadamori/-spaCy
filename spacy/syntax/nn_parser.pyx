@@ -32,7 +32,7 @@ from thinc cimport openblas
 
 from .._ml import zero_init, PrecomputableAffine, Tok2Vec, flatten
 from .._ml import link_vectors_to_models, create_default_optimizer
-from .._ml import HistoryFeatures
+from .._ml import HistoryFeatures, ExtraParseFeatures
 from ..compat import json_dumps, copy_array
 from ..tokens.doc cimport Doc
 from ..gold cimport GoldParse
@@ -254,7 +254,7 @@ cdef class Parser:
         hidden_width = util.env_opt('hidden_width', cfg.get('hidden_width', 128))
         embed_size = util.env_opt('embed_size', cfg.get('embed_size', 5000))
         hist_size = util.env_opt('history_feats', cfg.get('hist_size', 8))
-        hist_width = util.env_opt('history_width', cfg.get('hist_width', 8))
+        hist_width = util.env_opt('history_width', cfg.get('hist_width', 16))
         tok2vec = Tok2Vec(token_vector_width, embed_size,
                           pretrained_dims=cfg.get('pretrained_dims', 0))
         tok2vec = chain(tok2vec, flatten)
@@ -266,8 +266,8 @@ cdef class Parser:
 
         with Model.use_device('cpu'):
             upper = chain(
-                HistoryFeatures(nr_class=nr_class, hist_size=hist_size, nr_dim=hist_width),
-                Maxout(hidden_width, hidden_width+hist_size*hist_width),
+                ExtraParseFeatures(nr_dim=16, nr_row=4000),
+                Maxout(hidden_width, hidden_width+10*16),
                 zero_init(Affine(nr_class, hidden_width, drop_factor=0.0))
             )
 
@@ -423,9 +423,9 @@ cdef class Parser:
             while todo:
                 token_ids = self.get_token_ids(todo)
                 vector = state2vec(token_ids)
-                hists = numpy.asarray([state.history for state in todo], dtype='i')
-                if self.cfg.get('hist_size', 0):
-                    scores = vec2scores((vector, hists))
+                feats = numpy.asarray([state.extra_features for state in todo], dtype='uint64')
+                if True: #self.cfg.get('hist_size', 0):
+                    scores = vec2scores((vector, feats))
                 else:
                     scores = vec2scores(vector)
                 self.transition_batch(todo, scores)
@@ -610,9 +610,9 @@ cdef class Parser:
             if drop != 0:
                 mask = vec2scores.ops.get_dropout_mask(vector.shape, drop)
                 vector *= mask
-            if hist_size:
-                hists = numpy.asarray([st.history[:hist_size] for st in states], dtype='i')
-                scores, bp_scores = vec2scores.begin_update((vector, hists), drop=drop)
+            if True: #hist_size:
+                feats = numpy.asarray([st.extra_features for st in states], dtype='uint64')
+                scores, bp_scores = vec2scores.begin_update((vector, feats), drop=drop)
             else:
                 scores, bp_scores = vec2scores.begin_update(vector, drop=drop)
 
@@ -759,7 +759,7 @@ cdef class Parser:
                                        lower, stream, drop=0.0)
         return (tokvecs, bp_tokvecs), state2vec, upper
 
-    nr_feature = 13
+    nr_feature = 8
 
     def get_token_ids(self, states):
         cdef StateClass state
