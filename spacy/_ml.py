@@ -123,6 +123,27 @@ def HistoryFeatures(nr_class, hist_size=8, nr_dim=8):
         return outputs, add_history_bwd
     return wrap(add_history_fwd, embed)
 
+def ExtraParseFeatures(nr_dim=32, nr_row=1000):
+    '''Add extra ID-based features to a parse model.'''
+    embed = HashEmbed(nr_dim, nr_row)
+    ops = embed.ops
+    def add_id_feats_fwd(vectors_ids, drop=0.):
+        vectors, ids = vectors_ids
+        vector_dim = vectors.shape[1]
+        nr_feat = ids.shape[1]
+        flat_idvecs, bp_idvecs = embed.begin_update(ids.flatten(), drop=drop)
+        idvecs = flat_idvecs.reshape((ids.shape[0], nr_feat * flat_idvecs.shape[1]))
+        outputs = ops.xp.hstack((vectors, idvecs))
+
+        def add_id_feats_bwd(d_outputs, sgd=None):
+            d_vectors = d_outputs[:, :vector_dim]
+            d_idvecs = d_outputs[:, vector_dim:]
+            bp_idvecs(d_idvecs.reshape((d_idvecs.shape[0]*nr_feat,
+                int(d_idvecs.shape[1]/nr_feat))), sgd=sgd)
+            return embed.ops.xp.ascontiguousarray(d_vectors, dtype='f')
+        return outputs, add_id_feats_bwd
+    return wrap(add_id_feats_fwd, embed)
+
 
 @describe.on_data(_set_dimensions_if_needed,
     lambda model, X, y: model.init_weights(model))
