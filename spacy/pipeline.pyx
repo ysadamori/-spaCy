@@ -19,6 +19,7 @@ from thinc.neural._classes.difference import Siamese, CauchySimilarity
 
 from .tokens.doc cimport Doc
 from .syntax.nn_parser cimport Parser
+from .syntax.linear_parser cimport LinearParser
 from .syntax import nonproj
 from .syntax.ner cimport BiluoPushDown
 from .syntax.arc_eager cimport ArcEager
@@ -929,6 +930,25 @@ class TextCategorizer(Pipe):
         if sgd is None:
             sgd = self.create_optimizer()
         return sgd
+
+
+cdef class LinearDependencyParser(LinearParser):
+    name = 'linear-parser'
+    TransitionSystem = ArcEager
+
+    @property
+    def postprocesses(self):
+        return [nonproj.deprojectivize]
+
+    def add_multitask_objective(self, target):
+        pass
+
+    def init_multitask_objectives(self, get_gold_tuples, pipeline, sgd=None, **cfg):
+        pass
+
+    def __reduce__(self):
+        return (LinearDependencyParser, (self.vocab, self.moves, self.model),
+                None, None)
 
 
 cdef class DependencyParser(Parser):
