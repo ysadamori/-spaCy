@@ -406,6 +406,7 @@ Token.set_extension('inside_fused', default=False)
 def load_nlp(corpus, config, vectors=None):
     lang = corpus.split('_')[0]
     nlp = spacy.blank(lang)
+    #nlp = spacy.load('en_vectors_web_lg')
     if config.vectors:
         if not vectors:
             raise ValueError("config asks for vectors, but no vectors "
@@ -415,6 +416,7 @@ def load_nlp(corpus, config, vectors=None):
     return nlp
 
 def initialize_pipeline(nlp, docs, golds, config, device):
+    nlp.add_pipe(nlp.create_pipe('tagger'))
     nlp.add_pipe(nlp.create_pipe('parser'))
     if config.multitask_tag:
         nlp.parser.add_multitask_objective('tag')
@@ -423,7 +425,6 @@ def initialize_pipeline(nlp, docs, golds, config, device):
     if config.multitask_vectors:
         assert nlp.vocab.vectors.size
         nlp.parser.add_multitask_objective('vectors')
-    nlp.add_pipe(nlp.create_pipe('tagger'))
     for gold in golds:
         for i, tag in enumerate(gold.tags):
             if isinstance(tag, list):
@@ -600,7 +601,7 @@ def main(ud_dir, output_dir, config, corpus, vectors_dir=None,
     training_log = []
     for i in range(config.nr_epoch):
         docs, golds = read_data(nlp, paths.train.conllu.open(), paths.train.text.open(),
-                                max_doc_length=10, limit=limit,
+                                max_doc_length=20, limit=limit,
                                 oracle_segments=use_oracle_segments,
                                 raw_text=not use_oracle_segments)
         Xs = list(zip(docs, golds))
