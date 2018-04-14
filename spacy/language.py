@@ -16,6 +16,7 @@ from .tokenizer import Tokenizer
 from .vocab import Vocab
 from .lemmatizer import Lemmatizer
 from .pipeline import DependencyParser, Tagger, EntityRecognizer
+from .pipeline import LinearDependencyParser
 from .pipeline import SimilarityHook, TextCategorizer, SentenceSegmenter
 from .pipeline import merge_noun_chunks, merge_entities, merge_subtokens
 from .compat import json_dumps, izip, basestring_
@@ -102,6 +103,7 @@ class Language(object):
         #'tensorizer': lambda nlp, **cfg: Tensorizer(nlp.vocab, **cfg),
         'tagger': lambda nlp, **cfg: Tagger(nlp.vocab, **cfg),
         'parser': lambda nlp, **cfg: DependencyParser(nlp.vocab, **cfg),
+        'linear-parser': lambda nlp, **cfg: LinearDependencyParser(nlp.vocab, **cfg),
         'ner': lambda nlp, **cfg: EntityRecognizer(nlp.vocab, **cfg),
         'similarity': lambda nlp, **cfg: SimilarityHook(nlp.vocab, **cfg),
         'textcat': lambda nlp, **cfg: TextCategorizer(nlp.vocab, **cfg),
@@ -178,7 +180,10 @@ class Language(object):
 
     @property
     def parser(self):
-        return self.get_pipe('parser')
+        if 'parser' in self.pipe_names:
+            return self.get_pipe('parser')
+        else:
+            return self.get_pipe('linear-parser')
 
     @property
     def entity(self):
