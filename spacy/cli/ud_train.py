@@ -420,6 +420,8 @@ def initialize_pipeline(nlp, docs, golds, config, device):
     nlp.add_pipe(nlp.create_pipe('parser'))
     if config.multitask_tag:
         nlp.parser.add_multitask_objective('tag')
+    if config.multitask_dep:
+        nlp.parser.add_multitask_objective('dep')
     if config.multitask_sent:
         nlp.parser.add_multitask_objective('sent_start')
     if config.multitask_vectors:
@@ -516,7 +518,7 @@ def guess_fused_orths(word, ud_forms):
 
 class Config(object):
     def __init__(self, vectors=None, max_doc_length=10, multitask_tag=True,
-            multitask_sent=True, multitask_vectors=False,
+            multitask_sent=True, multitask_dep=True, multitask_vectors=False,
             nr_epoch=30, batch_size=1000, dropout=0.2):
         for key, value in locals().items():
             setattr(self, key, value)
