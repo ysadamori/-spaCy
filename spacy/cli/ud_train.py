@@ -406,12 +406,12 @@ Token.set_extension('inside_fused', default=False)
 def load_nlp(corpus, config, vectors=None):
     lang = corpus.split('_')[0]
     nlp = spacy.blank(lang)
-    #nlp = spacy.load('en_vectors_web_lg')
     if config.vectors:
         if not vectors:
             raise ValueError("config asks for vectors, but no vectors "
                              "directory set on command line (use -v)")
-        nlp.vocab.from_disk(Path(vectors) / corpus / 'vocab')
+        if (Path(vectors) / corpus).exists():
+            nlp.vocab.from_disk(Path(vectors) / corpus / 'vocab')
     nlp.meta['treebank'] = corpus
     return nlp
 
