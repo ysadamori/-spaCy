@@ -6,6 +6,7 @@ from pathlib import Path
 import tqdm
 from thinc.neural._classes.model import Model
 from timeit import default_timer as timer
+import multiprocessing_on_dill as multiprocessing
 
 from ._messages import Messages
 from ..attrs import PROB, IS_OOV, CLUSTER, LANG
@@ -16,6 +17,23 @@ from .. import about
 from .. import displacy
 from ..compat import json_dumps
 
+
+def train_component_for_epoch(component, sgd, train_docs, batch_sizes, dropout_rates,
+        conn, pbar):
+    batches = minibatch_by_words(train_docs, size=batch_sizes)
+    losses = {component.name: 0.}
+    words_seen = 0
+    for batch in batches:
+        docs, golds = zip(*batch)
+        docs = list(docs)
+        component.update(docs, golds, sgd=sgd,
+                        drop=next(dropout_rates), losses=losses)
+        if pbar is not None:
+            pbar.update(sum(len(doc) for doc in docs))
+    conn.send((component.model.to_bytes(), sgd, losses[component.name]))
+    conn.close()
+    pbar.close()
+ 
 
 @plac.annotations(
     lang=("model language", "positional", None, str),
@@ -123,17 +141,28 @@ def train(lang, output_dir, train_data, dev_data, n_iter=30, n_sents=0,
         for i in range(n_iter):
             train_docs = corpus.train_docs(nlp, noise_level=0.0,
                                            gold_preproc=gold_preproc, max_length=0)
-            words_seen = 0
-            with tqdm.tqdm(total=n_train_words, leave=False) as pbar:
-                losses = {}
-                for batch in minibatch_by_words(train_docs, size=batch_sizes):
-                    if not batch:
-                        continue
-                    docs, golds = zip(*batch)
-                    nlp.update(docs, golds, sgd=optimizer,
-                               drop=next(dropout_rates), losses=losses)
-                    pbar.update(sum(len(doc) for doc in docs))
-                    words_seen += sum(len(doc) for doc in docs)
+            losses = {}
+            workers = []
+            for i, (name, component) in enumerate(nlp.pipeline):
+                if not hasattr(component, 'update') or not hasattr(component, 'name'):
+                    continue
+                if not workers:
+                    pbar = tqdm.tqdm(total=n_train_words, leave=False)
+                else:
+                    pbar = None
+                parent_conn, child_conn = multiprocessing.Pipe(duplex=False)
+                process = multiprocessing.Process(target=train_component_for_epoch,
+                            args=(component, optimizer, train_docs, batch_sizes,
+                                dropout_rates, child_conn, pbar))
+                process.start()
+                workers.append((name, process, parent_conn))
+            for i, (name, process, output) in enumerate(workers):
+                model_state, model_opt, losses[name] = output.recv()
+                nlp.pipeline[i][1].model.from_bytes(model_state)
+                optimizer.mom1.update(model_opt.mom1)
+                optimizer.mom2.update(model_opt.mom2)
+                optimizer.averages.update(model_opt.averages)
+                process.join()
             with nlp.use_params(optimizer.averages):
                 util.set_env_log(False)
                 epoch_model_path = output_path / ('model%d' % i)
