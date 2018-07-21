@@ -192,7 +192,7 @@ def setup_package():
                 'preshed>=1.0.0,<2.0.0',
                 'thinc==6.10.3.dev1',
                 'plac<1.0.0,>=0.9.6',
-                'pathlib==1.0.1; python_version < "3.4"'
+                'pathlib==1.0.1; python_version < "3.4"',
                 'ujson>=1.35',
                 'dill>=0.2,<0.3',
                 'regex==2017.4.5',
