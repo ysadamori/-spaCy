@@ -190,9 +190,9 @@ def setup_package():
                 'murmurhash>=0.28,<0.29',
                 'cymem>=1.30,<1.32',
                 'preshed>=1.0.0,<2.0.0',
-                'thinc==6.10.3.dev0',
+                'thinc==6.10.3.dev1',
                 'plac<1.0.0,>=0.9.6',
-                'pathlib',
+                'pathlib==1.0.1; python_version < "3.4"'
                 'ujson>=1.35',
                 'dill>=0.2,<0.3',
                 'regex==2017.4.5',
