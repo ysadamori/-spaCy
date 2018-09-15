@@ -142,7 +142,14 @@ cpdef deprojectivize(Doc doc):
             doc.c[i].head = new_head.i - i
             doc.c[i].dep = doc.vocab.strings.add(new_label)
     set_children_from_heads(doc.c, doc.length)
+    check_sentence_boundaries(doc)
     return doc
+
+def check_sentence_boundaries(doc):
+    for sent in doc.sents:
+        for k, token in enumerate(sent):
+            if token.head.i > sent[-1].i or token.head.i < sent[0].i:
+                raise ValueError("Invalid parse: head outside sentence (%s)" % token.text)
 
 
 def _decorate(heads, proj_heads, labels):
