@@ -59,3 +59,16 @@ def test_doc_array_dep(en_tokenizer):
     assert feats_array[1][1] == doc[1].dep
     assert feats_array[2][1] == doc[2].dep
     assert feats_array[3][1] == doc[3].dep
+
+def test_doc_character_array(en_tokenizer):
+    text = "A nice sentence."
+    doc = en_tokenizer(text)
+    char_array = doc.to_utf8_array(nr_char=6)
+    assert char_array.shape == (len(doc), 6)
+    assert char_array[0, 1] == 255
+    assert char_array[1, 0] != 255
+    assert char_array[1, 1] != 255
+    # 'e' in nice should be the same as 'e' in sentence
+    assert char_array[1, 1] == char_array[2, 1]
+    # 'n' in nice should be the same as 'n' in sentence
+    assert char_array[1, 0] == char_array[2, 4]
