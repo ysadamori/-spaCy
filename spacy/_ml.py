@@ -257,6 +257,53 @@ def PyTorchBiLSTM(nO, nI, depth, dropout=0.2):
     model = torch.nn.LSTM(nI, nO//2, depth, bidirectional=True, dropout=dropout)
     return with_square_sequences(PyTorchWrapperRNN(model))
 
+def _uniform_init(lo, hi):
+    def wrapped(W, ops):
+        copy_array(W, ops.xp.random.uniform(lo, hi, W.shape))
+    return wrapped
+
+
+@describe.attributes(
+    nM=Dimension("Vector dimensions"),
+    nC=Dimension("Number of characters per word"),
+    vectors=Synapses("Embed matrix",
+        lambda obj: (obj.nV, obj.nM),
+        _uniform_init(-0.1, 0.1)),
+    d_vectors=Gradient("vectors")
+)
+class CharacterEmbed(Model):
+    def __init__(self, nM=None, nC=None, **kwargs):
+        Model.__init__(self, **kwargs)
+        self.nM = nM
+        self.nC = nC
+
+    @property
+    def nO(self):
+        return self.nM * self.nC
+    
+    @property
+    def nV(self):
+        return 256
+
+    def begin_update(self, docs, drop=0.):
+        if not docs:
+            return []
+        ids = [doc.to_utf8_array(nr_char=self.nC) for doc in docs]
+        vectors = []
+        for i in range(len(ids)):
+            vectors.append(self.vectors[ids[i].ravel()].reshape(
+                (ids[i].shape[0], self.nO)))
+
+        def backprop_character_embed(d_vectors, sgd=None):
+            for i in range(len(ids)):
+                doc_ids = ids[i].ravel()
+                d_doc_vector = d_vectors[i].reshape((len(doc_ids), self.nM))
+                self.ops.scatter_add(self.d_vectors, doc_ids, d_doc_vector)
+            if sgd is not None:
+                sgd(self._mem.weights, self._mem.gradient, key=self.id)
+            return None
+        return vectors, backprop_character_embed
+
 
 def Tok2Vec(width, embed_size, **kwargs):
     pretrained_vectors = kwargs.get('pretrained_vectors', None)
