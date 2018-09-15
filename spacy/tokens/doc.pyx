@@ -986,7 +986,6 @@ cdef class Doc:
             start_idx = 0
             end_idx = len(byte_string) - 1
             while j < nr_char and start_idx <= end_idx:
-                print(self[i], j, start_idx, end_idx)
                 output[i, j] = <unsigned char>byte_string[start_idx]
                 start_idx += 1
                 j += 1
@@ -1033,7 +1032,15 @@ cdef int set_children_from_heads(TokenC* tokens, int length) except -1:
             head.l_kids += 1
         if child.l_edge < head.l_edge:
             head.l_edge = child.l_edge
-
+    # Loop twice, to handle non-projectivity.
+    # If we have a rightward child with our left-edge, we won't have seen it.
+    # So we loop again
+    for i in range(length):
+        child = &tokens[i]
+        head = &tokens[i + child.head]
+        if child.l_edge < head.l_edge:
+            head.l_edge = child.l_edge
+ 
     # Set right edges --- same as above, but iterate in reverse
     for i in range(length-1, -1, -1):
         child = &tokens[i]
@@ -1042,9 +1049,14 @@ cdef int set_children_from_heads(TokenC* tokens, int length) except -1:
             head.r_kids += 1
         if child.r_edge > head.r_edge:
             head.r_edge = child.r_edge
-
-
-    # Set sentence starts
+    # Loop twice, to handle non-projectivity.
+    # If we have a leftward child with our right-edge, we won't have seen it.
+    # So we loop again
+    for i in range(length-1, -1, -1):
+        child = &tokens[i]
+        head = &tokens[i + child.head]
+        if child.r_edge > head.r_edge:
+            head.r_edge = child.r_edge
     for i in range(length):
         if tokens[i].head == 0 and tokens[i].dep != 0:
             tokens[tokens[i].l_edge].sent_start = True
