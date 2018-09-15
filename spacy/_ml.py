@@ -325,43 +325,38 @@ def Tok2Vec(width, embed_size, **kwargs):
     cols = [ID, NORM, PREFIX, SUFFIX, SHAPE, ORTH]
     with Model.define_operators({'>>': chain, '|': concatenate, '**': clone,
                                  '+': add, '*': reapply}):
-        norm = HashEmbed(width, embed_size, column=cols.index(NORM),
-                         name='embed_norm')
-        if subword_features:
-            prefix = HashEmbed(width, embed_size//2, column=cols.index(PREFIX),
-                               name='embed_prefix')
-            suffix = HashEmbed(width, embed_size//2, column=cols.index(SUFFIX),
-                               name='embed_suffix')
-            shape = HashEmbed(width, embed_size//2, column=cols.index(SHAPE),
-                              name='embed_shape')
-        else:
-            prefix, suffix, shape = (None, None, None)
-        if pretrained_vectors is not None:
+        norm = HashEmbed(width, embed_size, name='embed_norm', column=cols.index(NORM))
+        # These four conditions are repetitive, but it's better than having more
+        # complicated code.
+        if pretrained_vectors is None and not subword_features:
+            embed = FeatureExtracter(cols) >> with_flatten(norm)
+            reduce_dimensions = layerize(noop())
+        elif pretrained_vectors is not None and not subword_features:
             glove = StaticVectors(pretrained_vectors, width, column=cols.index(ID))
-
-            if subword_features:
-                embed = uniqued(
-                    (glove | norm | prefix | suffix | shape)
-                    >> LN(Maxout(width, width*5, pieces=3)), column=cols.index(ORTH))
-            else:
-                embed = uniqued(
-                    (glove | norm)
-                    >> LN(Maxout(width, width*2, pieces=3)), column=cols.index(ORTH))
-        elif subword_features:
-            embed = uniqued(
-                (norm | prefix | suffix | shape)
-                >> LN(Maxout(width, width*4, pieces=3)), column=cols.index(ORTH))
+            embed = FeatureExtracter(cols) >> with_flatten(norm | glove)
+            reduce_dimensions = LN(Maxout(width, width*2, pieces=cnn_maxout_pieces))
+        elif pretrained_vectors is None and subword_features:
+            embed = concatenate_lists(
+                CharacterEmbed(nM=64, nC=8),
+                FeatureExtracter(cols) >> with_flatten(norm)
+            )
+            reduce_dimensions = LN(Maxout(width, 64*8+width, pieces=cnn_maxout_pieces))
         else:
-            embed = norm
+            glove = StaticVectors(pretrained_vectors, width, column=cols.index(ID))
+            embed = concatenate_lists(
+                CharacterEmbed(nM=64, nC=8),
+                FeatureExtracter(cols) >> with_flatten(norm | glove))
+            reduce_dimensions = LN(Maxout(width, 64*8+width*2, pieces=cnn_maxout_pieces))
 
         convolution = Residual(
             ExtractWindow(nW=1)
             >> LN(Maxout(width, width*3, pieces=cnn_maxout_pieces))
         )
+        
         tok2vec = (
-            FeatureExtracter(cols)
+            embed
             >> with_flatten(
-                embed
+                reduce_dimensions
                 >> convolution ** conv_depth, pad=conv_depth
             )
         )
@@ -643,7 +638,8 @@ def concatenate_lists(*layers, **kwargs):  # pragma: no cover
     concat = concatenate(*layers)
 
     def concatenate_lists_fwd(Xs, drop=0.):
-        drop *= drop_factor
+        if drop is not None:
+            drop *= drop_factor
         lengths = ops.asarray([len(X) for X in Xs], dtype='i')
         flat_y, bp_flat_y = concat.begin_update(Xs, drop=drop)
         ys = ops.unflatten(flat_y, lengths)
@@ -655,3 +651,4 @@ def concatenate_lists(*layers, **kwargs):  # pragma: no cover
 
     model = wrap(concatenate_lists_fwd, concat)
     return model
+
