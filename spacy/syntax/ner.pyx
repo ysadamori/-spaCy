@@ -56,6 +56,10 @@ cdef class BiluoPushDown(TransitionSystem):
     def __init__(self, *args, **kwargs):
         TransitionSystem.__init__(self, *args, **kwargs)
 
+    @property
+    def _mandatory_actions(self):
+        return [(OUT, '')]
+
     @classmethod
     def get_actions(cls, **kwargs):
         actions = {
@@ -64,7 +68,7 @@ cdef class BiluoPushDown(TransitionSystem):
             IN: Counter(),
             LAST: Counter(),
             UNIT: Counter(),
-            OUT: Counter()
+            OUT: Counter(),
         }
         actions[OUT][''] = 1
         for entity_type in kwargs.get('entity_types', []):

@@ -369,6 +369,13 @@ cdef class ArcEager(TransitionSystem):
         actions[LEFT].setdefault('dep', 0)
         return actions
 
+    @property
+    def _mandatory_actions(self):
+        return [
+            (SHIFT, ''), (REDUCE, ''), (BREAK, 'ROOT'), (RIGHT, 'subtok'),
+            (LEFT, 'subtok'), (RIGHT, 'dep'), (LEFT, 'dep')
+        ]
+
     property action_types:
         def __get__(self):
             return (SHIFT, REDUCE, LEFT, RIGHT, BREAK)

@@ -42,6 +42,8 @@ cdef class TransitionSystem:
         self.labels = {}
         if labels_by_action:
             self.initialize_actions(labels_by_action, min_freq=min_freq)
+        else:
+            self.initialize_actions({})
         self.root_label = self.strings.add('ROOT')
         self.init_beam_state = _init_state
 
@@ -144,9 +146,16 @@ cdef class TransitionSystem:
         act = self.c[clas]
         return self.move_name(act.move, act.label)
 
+    @property
+    def _mandatory_actions(self):
+        return []
+
     def initialize_actions(self, labels_by_action, min_freq=None):
         self.labels = {}
         self.n_moves = 0
+        for action, label in self._mandatory_actions:
+            if label not in labels_by_action.get(action, {}):
+                self.add_action(action, label)
         for action, label_freqs in sorted(labels_by_action.items()):
             action = int(action)
             # Make sure we take a copy here, and that we get a Counter
